@@ -18,7 +18,7 @@ class PagingSource<Key, Value> {
   final StreamController<Page<Key, Value>> _data = StreamController.broadcast();
 
   Stream<Page<Key, Value>> readFromLocalSource(LoadParams<Key> loadParams) {
-    final stream = localSource.call(loadParams);
+    final stream = localSource.call(loadParams).asBroadcastStream();
     if(!_data.isClosed) _data.sink.addStream(stream);
     return stream;
   }
