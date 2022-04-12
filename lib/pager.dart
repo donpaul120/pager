@@ -186,7 +186,7 @@ class _PagerState<K, T> extends State<Pager<K, T>> {
 
             updateState();
 
-            await for (Page<K, T> nextPage in widget.source.localSource(params)) {
+            await for (Page<K, T> nextPage in widget.source.readFromLocalSource(params)) {
               final insertApplied = (nextPage.nextKey != nextKey) ? insert(mLoadId, LoadType.APPEND, nextPage) : true;
               print("Page says nextKey is ${nextPage.nextKey} PageSize ${nextPage.data.length} is it inserted $insertApplied");
               if (nextPage.nextKey == null) {
