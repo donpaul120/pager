@@ -148,7 +148,7 @@ class _PagerState<K, T> extends State<Pager<K, T>> {
     loadId = 0;
     setLoading();
     _pages.clear();
-    await for (Page<K, T> page in  widget.source.localSource(params)) {
+    await for (Page<K, T> page in  widget.source.readFromLocalSource(params)) {
       final insertApplied = insert(loadId++, LoadType.REFRESH, page);
 
       sourceStates = sourceStates?.modifyState(LoadType.REFRESH, NotLoading(page.nextKey == null))

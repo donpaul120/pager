@@ -1,7 +1,8 @@
 name: pager
 description: A Paging Library for fetch data both locally or remotely
 version: 0.0.1
-homepage:
+homepage: https://github.com/donpaul120/pager
+repository: https://github.com/donpaul120/pager
 
 environment:
   sdk: ">=2.16.1 <3.0.0"

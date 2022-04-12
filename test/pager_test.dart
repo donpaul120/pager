@@ -1,12 +1,19 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:pager/pager.dart';
+import 'package:pager/paging/paging_data.dart';
+import 'package:pager/paging/paging_source.dart';
+import 'package:pager/paging/paging_state.dart';
 
 void main() {
-  test('adds one to input values', () {
-    // final calculator = Pager(source: source, builder: builder);
-    // expect(calculator.addOne(2), 3);
-    // expect(calculator.addOne(-7), -6);
-    // expect(calculator.addOne(0), 1);
+
+  test('test that forEach emits event', () async {
+    final source = PagingSource<int, String>(
+      localSource: (a) => Stream.fromIterable([Page(["ooooo", "llqlllqq"], 0, 1)])
+    ).forEach((a) {
+      expect(a, isNotEmpty);
+    });
+
+    source.readFromLocalSource(LoadParams(LoadType.REFRESH, 0, 12))
+        .listen(null);
   });
 }
