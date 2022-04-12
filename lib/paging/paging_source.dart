@@ -18,15 +18,15 @@ class PagingSource<Key, Value> {
   final StreamController<Page<Key, Value>> _data = StreamController.broadcast();
 
   Stream<Page<Key, Value>> readFromLocalSource(LoadParams<Key> loadParams) {
-    final stream = localSource.call(loadParams).asBroadcastStream();
-    _data.sink.addStream(stream);
+    final stream = localSource.call(loadParams);
+    if(!_data.isClosed) _data.sink.addStream(stream);
     return stream;
   }
 
   PagingSource<Key, Value> forEach(Function(List<Value> a) callback) {
     _data.stream.listen((event) {
       callback.call(event.data);
-    }, onDone: () => _data.close());
+    });
     return this;
   }
 
