@@ -1,12 +1,10 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
-
 import 'paging_data.dart';
 import 'paging_state.dart';
 import 'remote_mediator.dart';
 
-class PagingSource<Key, Value> implements StreamConsumer<Page<Key, Value>> {
+class PagingSource<Key, Value> {
 
   PagingSource({
     required this.localSource,
@@ -16,11 +14,8 @@ class PagingSource<Key, Value> implements StreamConsumer<Page<Key, Value>> {
   final Stream<Page<Key, Value>> Function(LoadParams<Key> loadParams) localSource;
   final RemoteMediator<Key, Value>? remoteMediator;
 
-  final StreamController<Page<Key, Value>> _data = StreamController.broadcast();
-
-  Stream<Page<Key, Value>> readFromLocalSource(LoadParams<Key> loadParams) async* {
-    final stream = localSource.call(loadParams);
-    yield* stream;
+  Stream<Page<Key, Value>> readFromLocalSource(LoadParams<Key> loadParams)  {
+    return localSource.call(loadParams).asBroadcastStream();
   }
 
   @ExperimentalPagingApi()
@@ -60,21 +55,8 @@ class PagingSource<Key, Value> implements StreamConsumer<Page<Key, Value>> {
     );
   }
 
-
   factory PagingSource.empty() {
     return PagingSource<Key, Value>(localSource: (a) => Stream.value(Page([], null, null)));
-  }
-
-  Stream<Page<Key, Value>> get stream => _data.stream;
-
-  @override
-  Future addStream(Stream<Page<Key, Value>> stream) async {
-    await _data.addStream(stream);
-  }
-
-  @override
-  Future close() async {
-    await _data.close();
   }
 }
 
