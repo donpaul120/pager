@@ -21,7 +21,7 @@ class PagingSource<Key, Value> {
   @ExperimentalPagingApi()
   PagingSource<Key, Value> sort([int Function(Value a, Value b)? compare]) {
     return PagingSource(
-        localSource: (a) => localSource.call(a).map((event) {
+        localSource: (a) => readFromLocalSource(a).map((event) {
           final newData = event.data;
           newData.sort(compare);
           return Page(newData, event.prevKey, event.nextKey);
@@ -33,7 +33,7 @@ class PagingSource<Key, Value> {
   @ExperimentalPagingApi()
   PagingSource<Key, Value> filter(bool Function(Value a) predicate) {
     return PagingSource(
-        localSource: (params) => localSource.call(params).map((event) {
+        localSource: (params) => readFromLocalSource(params).map((event) {
           final newData = event.data.where(predicate).toList();
           return Page(newData, event.prevKey, event.nextKey);
         }),
@@ -45,7 +45,7 @@ class PagingSource<Key, Value> {
   PagingSource<Key, Value> forEach(Function(List<Value> a) callback) {
     return PagingSource(
         localSource: (params) {
-          final value = localSource.call(params);
+          final value = readFromLocalSource(params);
           value.forEach((element) {
             callback.call(element.data);
           });
