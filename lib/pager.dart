@@ -1,6 +1,7 @@
 library pager;
 
 import 'dart:async';
+import 'dart:developer';
 import 'package:flutter/widgets.dart' hide Page;
 import 'package:synchronized/synchronized.dart';
 
@@ -70,7 +71,9 @@ class _PagerState<K, T> extends State<Pager<K, T>> {
     return LoadParams(
         loadType,
         key,
-        (loadType == LoadType.REFRESH) ? widget.pagingConfig.initialPageSize : widget.pagingConfig.pageSize
+        (loadType == LoadType.REFRESH)
+            ? widget.pagingConfig.initialPageSize
+            : widget.pagingConfig.pageSize
     );
   }
 
@@ -81,8 +84,12 @@ class _PagerState<K, T> extends State<Pager<K, T>> {
     _remoteMediator = _pagingSource?.remoteMediator;
     _remoteMediator?.addListener(_remoteValueChanged);
     super.initState();
-    requestRemoteLoad(LoadType.REFRESH).then((value) => "");
+    _startInitialLoad();
+  }
+
+  void _startInitialLoad() async {
     _doInitialLoad();
+    await requestRemoteLoad(LoadType.REFRESH);
   }
 
   @override
@@ -148,7 +155,10 @@ class _PagerState<K, T> extends State<Pager<K, T>> {
     loadId = 0;
     setLoading();
     _pages.clear();
-    await for (Page<K, T> page in  widget.source.readFromLocalSource(params)) {
+    final stream = widget.source.readFromLocalSource(params);
+    await stream.pipe(widget.source);
+
+    await for (Page<K, T> page in widget.source.stream) {
       final insertApplied = insert(loadId++, LoadType.REFRESH, page);
 
       sourceStates = sourceStates?.modifyState(LoadType.REFRESH, NotLoading(page.nextKey == null))
@@ -157,7 +167,7 @@ class _PagerState<K, T> extends State<Pager<K, T>> {
 
       if(insertApplied) updateState();
 
-      int loadRound =  widget.pagingConfig.preFetchDistance ~/ widget.pagingConfig.pageSize;
+      int loadRound = widget.pagingConfig.preFetchDistance ~/ widget.pagingConfig.pageSize;
       break;
     }
   }
@@ -186,9 +196,12 @@ class _PagerState<K, T> extends State<Pager<K, T>> {
 
             updateState();
 
-            await for (Page<K, T> nextPage in widget.source.readFromLocalSource(params)) {
+            final stream = widget.source.readFromLocalSource(params);
+            await stream.pipe(widget.source);
+
+            await for (Page<K, T> nextPage in widget.source.stream) {
               final insertApplied = (nextPage.nextKey != nextKey) ? insert(mLoadId, LoadType.APPEND, nextPage) : true;
-              print("Page says nextKey is ${nextPage.nextKey} PageSize ${nextPage.data.length} is it inserted $insertApplied");
+              log("Page says nextKey is ${nextPage.nextKey} PageSize ${nextPage.data.length} is it inserted $insertApplied");
               if (nextPage.nextKey == null) {
                 sourceStates = sourceStates?.modifyState(LoadType.REFRESH, NotLoading(true))
                     .modifyState(LoadType.APPEND, NotLoading(true))

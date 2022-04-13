@@ -1,19 +1,45 @@
+import 'package:flutter/cupertino.dart' hide Page;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pager/pager.dart';
 
 import 'package:pager/paging/paging_data.dart';
 import 'package:pager/paging/paging_source.dart';
-import 'package:pager/paging/paging_state.dart';
 
 void main() {
 
-  test('test that forEach emits event', () async {
-    // final source = PagingSource<int, String>(
-    //   localSource: (a) => Stream.fromIterable([Page(["ooooo", "llqlllqq"], 0, 1)])
-    // ).forEach((a) {
-    //   expect(a, isNotEmpty);
-    // });
-    //
-    // source.readFromLocalSource(LoadParams(LoadType.REFRESH, 0, 12))
-    //     .listen(null);
+  testWidgets("Test that we can sort a paging source data", (tester) async {
+    final dataStream = Stream.fromIterable([Page(["B", "A"], 0, 1)]);
+
+    final source = PagingSource<int, String>(localSource: (a) => dataStream)
+        .sort((a, b) => a.compareTo(b))
+        .forEach((a) {
+          expect(a.first, equals("A"));
+        });
+
+    await tester.pumpWidget(Pager(
+        source: source,
+        builder: (ctx, d, da) {
+          return const SizedBox();
+        }
+    ));
   });
+
+
+  testWidgets("Test that we can filter out data in paging source", (tester) async {
+    final dataStream = Stream.fromIterable([Page(["B", "A"], 0, 1)]);
+
+    final source = PagingSource<int, String>(localSource: (a) => dataStream)
+        .filter((a) => a != "A")
+        .forEach((a) {
+          expect(a.first, equals("B"));
+        });
+
+    await tester.pumpWidget(Pager(
+        source: source,
+        builder: (ctx, d, da) {
+          return const SizedBox();
+        }
+    ));
+  });
+
 }
