@@ -88,8 +88,8 @@ class _PagerState<K, T> extends State<Pager<K, T>> {
   }
 
   void _startInitialLoad() async {
+    requestRemoteLoad(LoadType.REFRESH);
     _doInitialLoad();
-    await requestRemoteLoad(LoadType.REFRESH);
   }
 
   @override
@@ -156,9 +156,7 @@ class _PagerState<K, T> extends State<Pager<K, T>> {
     setLoading();
     _pages.clear();
 
-    final stream = widget.source.readFromLocalSource(params);
-
-    await for (Page<K, T> page in stream) {
+    await for (Page<K, T> page in widget.source.localSource(params)) {
       final insertApplied = insert(loadId++, LoadType.REFRESH, page);
 
       sourceStates = sourceStates?.modifyState(LoadType.REFRESH, NotLoading(page.nextKey == null))
@@ -196,8 +194,7 @@ class _PagerState<K, T> extends State<Pager<K, T>> {
 
             updateState();
 
-            final stream = widget.source.readFromLocalSource(params);
-            await for (Page<K, T> nextPage in stream) {
+            await for (Page<K, T> nextPage in widget.source.localSource(params)) {
               final insertApplied = (nextPage.nextKey != nextKey) ? insert(mLoadId, LoadType.APPEND, nextPage) : true;
               log("Page says nextKey is ${nextPage.nextKey} PageSize ${nextPage.data.length} is it inserted $insertApplied");
               if (nextPage.nextKey == null) {
