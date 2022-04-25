@@ -123,7 +123,11 @@ class _PagerState<K, T> extends State<Pager<K, T>> {
     if(mediatorStates?.append.endOfPaginationReached == true) return;
 
     mediatorStates = mediatorStates?.modifyState(loadType, Loading());
-    updateState();
+
+    if (loadType != LoadType.REFRESH) {
+      updateState();
+    }
+
     final result = await _remoteMediator?.load(loadType, PagingState(_pages, widget.pagingConfig));
 
     if(result is MediatorSuccess  && loadType == LoadType.REFRESH) {
@@ -168,54 +172,60 @@ class _PagerState<K, T> extends State<Pager<K, T>> {
 
       if(insertApplied) updateState();
 
-      int loadRound = widget.pagingConfig.preFetchDistance ~/ widget.pagingConfig.pageSize;
+      // int loadRound = widget.pagingConfig.preFetchDistance ~/ widget.pagingConfig.pageSize;
       break;
     }
   }
 
   void _doLoad(LoadType type, {bool invalidate = false}) async {
     switch(type) {
-      case LoadType.APPEND : {
-        await lock.synchronized(() async {
+      case LoadType.APPEND:
+        {
+          await lock.synchronized(() async {
+            final lastPage = (_pages.isNotEmpty) ? _pages.last : null;
+            final nextKey = invalidate ? lastPage?.prevKey : lastPage?.nextKey;
+            final params = loadParams(LoadType.APPEND, nextKey);
 
-          final lastPage = (_pages.isNotEmpty) ? _pages.last : null;
-          final nextKey = invalidate ? lastPage?.prevKey : lastPage?.nextKey;
-          final params = loadParams(LoadType.APPEND, nextKey);
+            int mLoadId = loadId + 1;
 
-          int mLoadId = loadId + 1;
-
-          if(sourceStates?.append.endOfPaginationReached == true
-              && mediatorStates?.append.endOfPaginationReached == true) {
-            return;
-          }
-
-          if(nextKey != null ) {
-            //update the state
-            sourceStates = sourceStates?.modifyState(LoadType.REFRESH, NotLoading(true))
-                .modifyState(LoadType.APPEND, Loading(endOfPaginationReached: true))
-                .modifyState(LoadType.PREPEND, NotLoading(true));
-
-            updateState();
-
-            await for (Page<K, T> nextPage in widget.source.localSource(params)) {
-              final insertApplied = (nextPage.nextKey != nextKey) ? insert(mLoadId, LoadType.APPEND, nextPage) : true;
-              log("Page says nextKey is ${nextPage.nextKey} PageSize ${nextPage.data.length} is it inserted $insertApplied");
-              if (nextPage.nextKey == null) {
-                sourceStates = sourceStates?.modifyState(LoadType.REFRESH, NotLoading(true))
-                    .modifyState(LoadType.APPEND, NotLoading(true))
-                    .modifyState(LoadType.PREPEND, NotLoading(true));
-              }
-
-              if (insertApplied) updateState();
-              break;
+            if (sourceStates?.append.endOfPaginationReached == true &&
+                mediatorStates?.append.endOfPaginationReached == true) {
+              return;
             }
-          }
-          if(_remoteMediator != null && mediatorStates?.append.endOfPaginationReached == false && !invalidate) {
-            //check if this has been loaded
-            await requestRemoteLoad(LoadType.APPEND);
-          }
-        });
-        break;
+
+            if (nextKey != null) {
+              //update the state
+              sourceStates = sourceStates
+                  ?.modifyState(LoadType.REFRESH, NotLoading(true))
+                  .modifyState(LoadType.APPEND, Loading(endOfPaginationReached: true))
+                  .modifyState(LoadType.PREPEND, NotLoading(true));
+
+              updateState();
+
+              await for (Page<K, T> nextPage in widget.source.localSource(params)) {
+                final insertApplied = (nextPage.nextKey != nextKey)
+                    ? insert(mLoadId, LoadType.APPEND, nextPage)
+                    : true;
+                log("Page says nextKey is ${nextPage.nextKey} PageSize ${nextPage.data.length} is it inserted $insertApplied");
+                if (nextPage.nextKey == null) {
+                  sourceStates = sourceStates
+                      ?.modifyState(LoadType.REFRESH, NotLoading(true))
+                      .modifyState(LoadType.APPEND, NotLoading(true))
+                      .modifyState(LoadType.PREPEND, NotLoading(true));
+                }
+
+                if (insertApplied) updateState();
+                break;
+              }
+            }
+            if (_remoteMediator != null && !invalidate) {
+              if (mediatorStates?.append.endOfPaginationReached == false &&
+                  mediatorStates?.refresh.endOfPaginationReached == false) {
+                await requestRemoteLoad(LoadType.APPEND);
+              }
+            }
+          });
+          break;
       }
       case LoadType.PREPEND:
         // TODO: Handle this case.
