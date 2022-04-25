@@ -1,4 +1,4 @@
-import 'package:flutter/cupertino.dart' hide Page;
+import 'package:flutter/material.dart' hide Page;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pager/pager.dart';
 
@@ -36,6 +36,35 @@ void main() {
           return const SizedBox();
         }
     ));
+  });
+
+  testWidgets("Test that we can find the nearest scrollView in the tree", (tester) async {
+    final source = PagingSource<int, String>(localSource: (a) => Stream.fromIterable([Page(["B", "A"], 0, 1)]));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Column(
+          children: [
+            Expanded(child: Pager(
+                source: source,
+                builder: (ctx, d, da) {
+                  return SizedBox(
+                      height: 100,
+                      child: ListView.builder(
+                          scrollDirection: Axis.vertical,
+                          itemCount: 1,
+                          itemBuilder: (a, b) => SizedBox.shrink()
+                      )
+                  );
+                }
+            ))
+          ],
+        ),
+      )
+    );
+
+    final type = find.byType(ListView);
+    expect(type, findsOneWidget);
   });
 
 }

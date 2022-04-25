@@ -126,16 +126,19 @@ class _PagerState<K, T> extends State<Pager<K, T>> {
     updateState();
     final result = await _remoteMediator?.load(loadType, PagingState(_pages, widget.pagingConfig));
 
+    if(result is MediatorSuccess  && loadType == LoadType.REFRESH) {
+      mediatorStates = mediatorStates?.modifyState(loadType, NotLoading(result.endOfPaginationReached));
+      _pages.clear();
+      _doInitialLoad();
+      return;
+    }
+
     if(result is MediatorSuccess && result.endOfPaginationReached == true) {
       mediatorStates = mediatorStates?.modifyState(loadType, NotLoading(true));
       updateState();
       return;
     }
-    if(result is MediatorSuccess  && loadType == LoadType.REFRESH) {
-      mediatorStates = mediatorStates?.modifyState(loadType, NotLoading(result.endOfPaginationReached));
-      _pages.clear();
-      _doInitialLoad();
-    }
+
     if(result is MediatorSuccess && loadType == LoadType.APPEND) {
       mediatorStates = mediatorStates?.modifyState(loadType, NotLoading(result.endOfPaginationReached));
       //check if the lastKey is null
@@ -271,6 +274,19 @@ class _PagerState<K, T> extends State<Pager<K, T>> {
       _remoteMediator = _pagingSource?.remoteMediator;
       _doInitialLoad();
       requestRemoteLoad(LoadType.REFRESH);
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if(_scrollController == null) {
+      ScrollView? view = context.findAncestorWidgetOfExactType<ScrollView>();
+      log("Found a view??? ==> $view");
+      if(view != null) {
+        _scrollController = view.controller;
+        _registerScrollListener();
+      }
     }
   }
 
