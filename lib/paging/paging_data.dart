@@ -19,6 +19,7 @@ class Page<Key, Value> {
 
   Page(this.data, this.prevKey, this.nextKey);
 
+  bool isEmpty() => data.isEmpty;
 
   PagingData<Value> toPagingData(LoadStates states) {
     return PagingData(data, loadStates: CombinedLoadStates(

@@ -1,6 +1,7 @@
 library pager;
 
 import 'dart:async';
+import 'dart:collection';
 import 'dart:developer';
 import 'package:flutter/widgets.dart' hide Page;
 import 'package:synchronized/synchronized.dart';
@@ -13,6 +14,7 @@ import 'paging/paging_data.dart';
 import 'paging/paging_source.dart';
 import 'paging/paging_state.dart';
 import 'paging/remote_mediator.dart';
+import 'package:collection/collection.dart';
 
 
 /// @author Paul Okeke
@@ -40,7 +42,6 @@ class Pager<K, T> extends StatefulWidget {
 
   final ScrollController? scrollController;
 
-
   @override
   State<StatefulWidget> createState() => _PagerState<K,T>();
 
@@ -50,19 +51,28 @@ class _PagerState<K, T> extends State<Pager<K, T>> {
 
   final List<Page<K, T>> _pages = [];
 
-  int _initialPageIndex = 0;
-  int loadId = 0;
-  int preFetchedCounter = 0;
   LoadStates _states = LoadStates.idle();
   PagingData<T> snapShot = PagingData([]);
+
+  /// Local Data state
   LoadStates? sourceStates = LoadStates.idle();
+
+  /// Remote data state
   LoadStates? mediatorStates = LoadStates.idle();
 
   final lock = Lock();
 
+  /// The Current PagingData value. This value is what is passed
+  /// to the PagingBuilder when the data is updated/changes
   late PagingData<T> value;
 
+  /// A ScrollController used to listen for when to fetch more
   ScrollController? _scrollController;
+
+
+  /// Holds a subscription for each page fetched
+  final LinkedHashMap<K?, StreamSubscription<Page<K, T>>> _pageSubscriptions =
+      LinkedHashMap();
 
   PagingSource<K, T>? _pagingSource;
   RemoteMediator<K, T>? _remoteMediator;
@@ -82,20 +92,9 @@ class _PagerState<K, T> extends State<Pager<K, T>> {
     value = PagingData([]);
     _pagingSource = widget.source;
     _remoteMediator = _pagingSource?.remoteMediator;
-    _remoteMediator?.addListener(_remoteValueChanged);
     super.initState();
-    _startInitialLoad();
-  }
-
-  void _startInitialLoad() async {
+    doLoad(LoadType.REFRESH);
     requestRemoteLoad(LoadType.REFRESH);
-    _doInitialLoad();
-  }
-
-  @override
-  void dispose() {
-    _remoteMediator?.removeListener(_remoteValueChanged);
-    super.dispose();
   }
 
   List<T> transformPages() {
@@ -105,222 +104,230 @@ class _PagerState<K, T> extends State<Pager<K, T>> {
     });
   }
 
-  void updateState() {
-    _states = _states.combineStates(sourceStates!, mediatorStates!);
-    _localValueChanged(PagingData(transformPages(), loadStates: CombinedLoadStates(
-      _states.refresh, _states.append, _states.prepend,
-        source: sourceStates, mediator:  mediatorStates
-    )));
-  }
+  doLoad(LoadType loadType) async {
+    LoadParams<K> params;
 
-  void setLoading() {
-    sourceStates = sourceStates?.modifyState(LoadType.REFRESH, Loading());
-    _states = _states.modifyState(LoadType.REFRESH, Loading());
-    updateState();
-  }
-
-  Future<void> requestRemoteLoad(LoadType loadType) async {
-    if(mediatorStates?.append.endOfPaginationReached == true) return;
-
-    mediatorStates = mediatorStates?.modifyState(loadType, Loading());
-
-    if (loadType != LoadType.REFRESH) {
-      updateState();
+    if (loadType == LoadType.REFRESH && _pages.isNotEmpty) {
+      invalidate();
     }
 
-    final result = await _remoteMediator?.load(loadType, PagingState(_pages, widget.pagingConfig));
-
-    if(result is MediatorSuccess  && loadType == LoadType.REFRESH) {
-      mediatorStates = mediatorStates?.modifyState(loadType, NotLoading(result.endOfPaginationReached));
-      _pages.clear();
-      _doInitialLoad();
-      return;
+    if (_pages.isEmpty || _pages.last.isEmpty()) {
+      params = loadParams(LoadType.REFRESH, null);
+    } else {
+      final nextKey = _pages.last.nextKey;
+      params = loadParams(loadType, nextKey);
     }
 
-    if(result is MediatorSuccess && result.endOfPaginationReached == true) {
-      mediatorStates = mediatorStates?.modifyState(loadType, NotLoading(true));
-      updateState();
-      return;
-    }
-
-    if(result is MediatorSuccess && loadType == LoadType.APPEND) {
-      mediatorStates = mediatorStates?.modifyState(loadType, NotLoading(result.endOfPaginationReached));
-      //check if the lastKey is null
-      if(_pages.isNotEmpty && _pages.last.nextKey == null) {
-        //we should invalidate for a reload
-        _doLoad(LoadType.APPEND, invalidate: true);
-      }
-    }
-    if(result is MediatorError) {
-      mediatorStates = mediatorStates?.modifyState(loadType, Error(result.exception));
-      updateState();
-    }
-  }
-
-  void _doInitialLoad() async {
-    final params = loadParams(LoadType.REFRESH, null);
-    loadId = 0;
-    setLoading();
-    _pages.clear();
-
-    await for (Page<K, T> page in widget.source.localSource(params)) {
-      final insertApplied = insert(loadId++, LoadType.REFRESH, page);
-
-      sourceStates = sourceStates?.modifyState(LoadType.REFRESH, NotLoading(page.nextKey == null))
-          .modifyState(LoadType.APPEND, NotLoading(page.nextKey == null))
-          .modifyState(LoadType.PREPEND, NotLoading(page.nextKey == null));
-
-      if(insertApplied) updateState();
-
-      // int loadRound = widget.pagingConfig.preFetchDistance ~/ widget.pagingConfig.pageSize;
-      break;
-    }
-  }
-
-  void _doLoad(LoadType type, {bool invalidate = false}) async {
-    switch(type) {
-      case LoadType.APPEND:
-        {
-          await lock.synchronized(() async {
-            final lastPage = (_pages.isNotEmpty) ? _pages.last : null;
-            final nextKey = invalidate ? lastPage?.prevKey : lastPage?.nextKey;
-            final params = loadParams(LoadType.APPEND, nextKey);
-
-            int mLoadId = loadId + 1;
-
-            if (sourceStates?.append.endOfPaginationReached == true &&
-                mediatorStates?.append.endOfPaginationReached == true) {
-              return;
-            }
-
-            if (nextKey != null) {
-              //update the state
-              sourceStates = sourceStates
-                  ?.modifyState(LoadType.REFRESH, NotLoading(true))
-                  .modifyState(LoadType.APPEND, Loading(endOfPaginationReached: true))
-                  .modifyState(LoadType.PREPEND, NotLoading(true));
-
-              updateState();
-
-              await for (Page<K, T> nextPage in widget.source.localSource(params)) {
-                final insertApplied = (nextPage.nextKey != nextKey)
-                    ? insert(mLoadId, LoadType.APPEND, nextPage)
-                    : true;
-                log("Page says nextKey is ${nextPage.nextKey} PageSize ${nextPage.data.length} is it inserted $insertApplied");
-                if (nextPage.nextKey == null) {
-                  sourceStates = sourceStates
-                      ?.modifyState(LoadType.REFRESH, NotLoading(true))
-                      .modifyState(LoadType.APPEND, NotLoading(true))
-                      .modifyState(LoadType.PREPEND, NotLoading(true));
-                }
-
-                if (insertApplied) updateState();
-                break;
-              }
-            }
-            if (_remoteMediator != null && !invalidate) {
-              if (mediatorStates?.append.endOfPaginationReached == false &&
-                  mediatorStates?.refresh.endOfPaginationReached == false) {
-                await requestRemoteLoad(LoadType.APPEND);
-              }
-            }
-          });
+    await lock.synchronized(() async {
+      switch(loadType) {
+        case LoadType.REFRESH:
+          sourceStates = sourceStates?.modifyState(loadType, Loading());
+          _states = _states.modifyState(LoadType.REFRESH, Loading());
+          await closeAllSubscriptions();
+          await onRefresh(params);
+          break;
+        case LoadType.APPEND:
+          sourceStates = sourceStates?.modifyState(loadType, Loading());
+          _states = _states.modifyState(loadType, Loading());
+          await onAppend(params);
+          break;
+        case LoadType.PREPEND:
+          onPrepend(params);
           break;
       }
-      case LoadType.PREPEND:
-        // TODO: Handle this case.
-        break;
-      case LoadType.REFRESH:
-        //Do nothing
-        break;
+    });
+  }
+
+  ///This is triggered when we are reloading the page, e.g a new paging source
+  onRefresh(LoadParams<K> params) async {
+    if(_pageSubscriptions.containsKey(params.key)) return;
+
+    final localSource = widget.source.localSource.call(params);
+    final subscription = localSource.listen((page) {
+
+      final newData = page.data;
+
+      if(_pages.isNotEmpty) {
+        insertOrUpdate(page.prevKey, page);
+        return;
+      }
+
+      if(newData.length < widget.pagingConfig.initialPageSize) {
+        sourceStates = sourceStates
+            ?.modifyState(LoadType.REFRESH, NotLoading(true))
+            .modifyState(LoadType.APPEND, NotLoading(true))
+            .modifyState(LoadType.PREPEND, NotLoading(true));
+      } else {
+        sourceStates = sourceStates
+            ?.modifyState(LoadType.REFRESH, NotLoading(false))
+            .modifyState(LoadType.APPEND, NotLoading(true))
+            .modifyState(LoadType.PREPEND, NotLoading(true));
+      }
+
+      insertOrUpdate(page.prevKey, page);
+    });
+    _pageSubscriptions.putIfAbsent(params.key, () => subscription);
+    dispatchUpdates();
+  }
+
+  onAppend(LoadParams<K> params) async {
+
+    if (_pageSubscriptions.containsKey(params.key)) {
+      return;
+    }
+
+    final localSource = widget.source.localSource.call(params);
+    StreamSubscription<Page<K, T>>? subscription;
+
+    subscription = localSource.listen((page) {
+      if(_pages.isEmpty) {
+        subscription?.cancel();
+        _pageSubscriptions.remove(params.key);
+        return;
+      }
+
+      final newData = page.data;
+      final lastPage = _pages.last;
+
+      if (lastPage.nextKey != page.prevKey) {
+        insertOrUpdate(page.prevKey, page);
+        return;
+      }
+
+      final endOfPage = newData.length < widget.pagingConfig.pageSize;
+
+      sourceStates = sourceStates
+          ?.modifyState(LoadType.REFRESH, NotLoading(true))
+          .modifyState(LoadType.APPEND, NotLoading(endOfPage))
+          .modifyState(LoadType.PREPEND, NotLoading(true));
+
+      insertOrUpdate(page.prevKey, page);
+
+      if (newData.isEmpty || endOfPage) {
+       requestRemoteLoad(LoadType.APPEND);
+      }
+    });
+    _pageSubscriptions.putIfAbsent(params.key, () => subscription!);
+    dispatchUpdates();
+  }
+
+  onPrepend(LoadParams params) {
+
+  }
+
+  requestRemoteLoad(LoadType loadType) async {
+    if (true == mediatorStates?.refresh.endOfPaginationReached ||
+        true == mediatorStates?.append.endOfPaginationReached ||
+        _remoteMediator == null) {
+      return;
+    }
+    mediatorStates = mediatorStates?.modifyState(loadType, Loading());
+    dispatchUpdates();
+
+    final List<Page<K, T>> currentPages = [..._pages];
+    final result = await _remoteMediator?.load(
+        loadType, PagingState(currentPages, widget.pagingConfig)
+    );
+
+    if (result is MediatorSuccess) {
+      mediatorStates = mediatorStates?.modifyState(
+          loadType, NotLoading(result.endOfPaginationReached)
+      );
+      doLoad(loadType);
+    } else if (result is MediatorError) {
+      mediatorStates = mediatorStates?.modifyState(
+          loadType, Error(result.exception)
+      );
+      dispatchUpdates();
     }
   }
 
-  bool insert(int loadId, LoadType loadType, Page<K, T> page) {
-    switch(loadType) {
-      case LoadType.REFRESH:
-        if(_pages.isNotEmpty) return false;
-        if(loadId != 0) return false;
+  invalidate() {
+    _pages.clear();
+    snapShot.data.clear();
+    closeAllSubscriptions();
+    dispatchUpdates();
+  }
 
+  bool _isSame(List<T> oldList, List<T> newList) {
+    //TODO: use a diff util to compare if there are changes
+    return false;
+  }
+
+  insertOrUpdate(K? prevKey, Page<K, T> page) {
+    bool inserted = false;
+    if (prevKey == null) {
+      if (_pages.isEmpty && page.data.isNotEmpty) {
         _pages.add(page);
-        _initialPageIndex = 0;
-
-        break;
-      case LoadType.APPEND:
-        if(_pages.isEmpty) return false;
-        if(loadId == 0) return false;
-        if(_pages.last.data.length < widget.pagingConfig.pageSize) {
-          _pages.removeLast();
-          _pages.add(page);
-        } else {
-          _pages.add(page);
-          _initialPageIndex++;
+        inserted = true;
+      } else if(_pages.isNotEmpty) {
+        final oldPage = _pages.first;
+        if (!_isSame(oldPage.data, page.data)) {
+          oldPage.data.clear();
+          oldPage.data.addAll(page.data);
+          inserted = true;
         }
-        break;
-      case LoadType.PREPEND:
-        break;
-    }
-
-    return true;
-  }
-
-  @override
-  void didUpdateWidget(covariant Pager<K, T> oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    //check if this is a hard refresh
-    if(oldWidget.builder is ScrollView) {
-      _scrollController = (oldWidget.builder as ScrollView).controller;
-    }
-    if(_pagingSource == widget.source) {
-
+      }
     } else {
-      _states = LoadStates.idle();
-      sourceStates = LoadStates.idle();
-      mediatorStates = LoadStates.idle();
-      _pagingSource = widget.source;
-      _initialPageIndex = -1;
-      loadId = 0;
-      preFetchedCounter = 0;
-      _remoteMediator = _pagingSource?.remoteMediator;
-      _doInitialLoad();
-      requestRemoteLoad(LoadType.REFRESH);
-    }
-  }
+      //this is a possible append or prepend
+      if (_pages.isEmpty) {
+        invalidate();
+        return;
+      }
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if(_scrollController == null) {
-      ScrollView? view = context.findAncestorWidgetOfExactType<ScrollView>();
-      log("Found a view??? ==> $view");
-      if(view != null) {
-        _scrollController = view.controller;
-        _registerScrollListener();
+      //TODO: consider using an hashtable for faster look up in 0(1) time
+      final oldPage = _pages.firstWhereOrNull((element) {
+        return element.prevKey == prevKey;
+      });
+      //TODO: We should not be adding to this page
+      // if the previous page is not up to load size
+      if (null == oldPage && page.data.isNotEmpty) {
+        _pages.add(page);
+        inserted = true;
+      } else if (null != oldPage) {
+        if (!_isSame(oldPage.data, page.data)) {
+          oldPage.data.clear();
+          oldPage.data.addAll(page.data);
+          if (oldPage.data.isEmpty) {
+            _pages.remove(oldPage);
+          }
+          inserted = true;
+        }
       }
     }
-  }
-
-
-  void _localValueChanged(PagingData<T> event) {
-    if(mounted) {
-      setState(() { value = event; });
-      snapShot = event;
-    }else {
-      print("Not mounted $_states");
+    if (inserted) {
+      dispatchUpdates();
     }
   }
 
-  void _remoteValueChanged() {
-
+  closeAllSubscriptions() async {
+    await Future.microtask(() async {
+      for (final subscription in _pageSubscriptions.entries) {
+        await subscription.value.cancel();
+      }
+      _pageSubscriptions.clear();
+    });
   }
 
-  void dispatchChanges() {
-
+  void dispatchUpdates() {
+    _states = _states.combineStates(sourceStates!, mediatorStates!);
+    final combinedStates = CombinedLoadStates(
+        _states.refresh, _states.append, _states.prepend,
+        source: sourceStates, mediator: mediatorStates);
+    final pages = transformPages();
+    final PagingData<T> event = PagingData(pages, loadStates: combinedStates);
+    if (mounted) {
+      setState(() {
+        value = event;
+      });
+      snapShot = event;
+    }
   }
 
   void _scrollListener() {
-    if(_scrollController?.position.pixels == _scrollController?.position.maxScrollExtent) {
-      _doLoad(LoadType.APPEND);
+    if(_scrollController?.position.pixels
+        == _scrollController?.position.maxScrollExtent) {
+      doLoad(LoadType.APPEND);
     }
   }
   
@@ -328,6 +335,14 @@ class _PagerState<K, T> extends State<Pager<K, T>> {
     final scrollController = _scrollController ?? widget.scrollController;
     scrollController?.removeListener(_scrollListener);
     scrollController?.addListener(_scrollListener);
+  }
+
+  resetPager() {
+    _states = LoadStates.idle();
+    sourceStates = LoadStates.idle();
+    mediatorStates = LoadStates.idle();
+    _pagingSource = widget.source;
+    _remoteMediator = widget.source.remoteMediator;
   }
 
   @override
@@ -342,4 +357,29 @@ class _PagerState<K, T> extends State<Pager<K, T>> {
     return builder;
   }
 
+  @override
+  void didUpdateWidget(covariant Pager<K, T> oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if(oldWidget.source != _pagingSource) {
+      resetPager();
+      doLoad(LoadType.REFRESH);
+    }
+  }
+
+  @override
+  void dispose() {
+    invalidate();
+    super.dispose();
+  }
+
 }
+
+///
+///load the data
+///keep the subscription open for each
+///when there's a refresh close all subscription
+///on each even update or insert the page
+///update the pager
+
+//how to determine the states since we are connect to local
+///RemoteMediator will
