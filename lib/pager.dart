@@ -2,6 +2,7 @@ library pager;
 
 import 'dart:async';
 import 'dart:collection';
+import 'dart:developer';
 import 'package:diffutil_dart/diffutil.dart';
 import 'package:flutter/widgets.dart' hide Page;
 import 'package:synchronized/synchronized.dart';
@@ -70,6 +71,10 @@ class _PagerState<K, T> extends State<Pager<K, T>> {
   ScrollController? _scrollController;
 
 
+  ///
+  int _totalNumberOfItems = 0;
+
+
   /// Holds a subscription for each page fetched
   final LinkedHashMap<K?, StreamSubscription<Page<K, T>>> _pageSubscriptions =
       LinkedHashMap();
@@ -98,27 +103,29 @@ class _PagerState<K, T> extends State<Pager<K, T>> {
   }
 
   List<T> transformPages() {
+    _totalNumberOfItems = 0;
     return _pages.fold(<T>[], (List<T> previousValue, element) {
+      _totalNumberOfItems += element.data.length;
       previousValue.addAll(element.data);
       return previousValue;
     });
   }
 
-  doLoad(LoadType loadType) async {
+    doLoad(LoadType loadType) async {
     LoadParams<K> params;
 
-    if (loadType == LoadType.REFRESH && _pages.isNotEmpty) {
-      invalidate();
-    }
-
-    if (_pages.isEmpty || _pages.last.isEmpty()) {
-      params = loadParams(LoadType.REFRESH, null);
-    } else {
-      final nextKey = _pages.last.nextKey;
-      params = loadParams(loadType, nextKey);
-    }
-
     await lock.synchronized(() async {
+      if (loadType == LoadType.REFRESH && _pages.isNotEmpty) {
+        await invalidate();
+      }
+
+      if (_pages.isEmpty || _pages.last.isEmpty()) {
+        params = loadParams(LoadType.REFRESH, null);
+      } else {
+        final nextKey = _pages.last.nextKey;
+        params = loadParams(loadType, nextKey);
+      }
+
       switch(loadType) {
         case LoadType.REFRESH:
           sourceStates = sourceStates?.modifyState(loadType, Loading());
@@ -242,11 +249,11 @@ class _PagerState<K, T> extends State<Pager<K, T>> {
     }
   }
 
-  invalidate() {
+  invalidate({bool dispatch = true}) async {
     _pages.clear();
     snapShot.data.clear();
-    closeAllSubscriptions();
-    dispatchUpdates();
+    if(dispatch) dispatchUpdates();
+    await closeAllSubscriptions();
   }
 
   bool _calculateDiffAndUpdate(Page<K, T> oldPage, Page<K, T> newPage) {
@@ -295,7 +302,7 @@ class _PagerState<K, T> extends State<Pager<K, T>> {
         _pages.add(page);
         inserted = true;
       } else if (null != oldPage) {
-        inserted = !_calculateDiffAndUpdate(_pages.first, page);
+        inserted = !_calculateDiffAndUpdate(oldPage, page);
       }
     }
     if (inserted) {
@@ -328,8 +335,14 @@ class _PagerState<K, T> extends State<Pager<K, T>> {
   }
 
   void _scrollListener() {
-    if(_scrollController?.position.pixels
-        == _scrollController?.position.maxScrollExtent) {
+    final prefetchDistance = widget.pagingConfig.preFetchDistance;
+    final currentScrollExtent = _scrollController?.position.pixels ?? 0;
+    final maxScrollExtent = _scrollController?.position.maxScrollExtent ?? 0;
+
+    final heightPerItem = maxScrollExtent / _totalNumberOfItems;
+    final scrollOffsetPerItem = currentScrollExtent / heightPerItem;
+
+    if((_totalNumberOfItems - scrollOffsetPerItem) <= prefetchDistance) {
       doLoad(LoadType.APPEND);
     }
   }
@@ -371,7 +384,7 @@ class _PagerState<K, T> extends State<Pager<K, T>> {
 
   @override
   void dispose() {
-    invalidate();
+    invalidate(dispatch: false);
     super.dispose();
   }
 
