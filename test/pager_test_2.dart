@@ -16,7 +16,7 @@ void main() {
 
     final pager = Pager(
         source: source,
-        builder: (ctx, d, da) {
+        builder: (ctx, d) {
           log("$d");
           return const SizedBox();
         }

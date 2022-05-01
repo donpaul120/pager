@@ -2,7 +2,6 @@ library pager;
 
 import 'dart:async';
 import 'dart:collection';
-import 'dart:developer';
 import 'package:diffutil_dart/diffutil.dart';
 import 'package:flutter/widgets.dart' hide Page;
 import 'package:synchronized/synchronized.dart';
@@ -21,7 +20,7 @@ import 'package:collection/collection.dart';
 /// @author Paul Okeke
 /// A Paging Library
 
-typedef PagingBuilder<T> = Widget Function(BuildContext context, T value, Widget? child);
+typedef PagingBuilder<T> = Widget Function(BuildContext context, T value);
 
 class Pager<K, T> extends StatefulWidget {
   const Pager({
@@ -29,7 +28,6 @@ class Pager<K, T> extends StatefulWidget {
     required this.source,
     required this.builder,
     this.pagingConfig = const PagingConfig.fromDefault(),
-    this.child,
     this.scrollController
   }) : super(key: key);
 
@@ -38,8 +36,6 @@ class Pager<K, T> extends StatefulWidget {
   final PagingBuilder<PagingData<T>> builder;
 
   final PagingConfig pagingConfig;
-
-  final Widget? child;
 
   final ScrollController? scrollController;
 
@@ -71,7 +67,9 @@ class _PagerState<K, T> extends State<Pager<K, T>> {
   /// to the PagingBuilder when the data is updated/changes
   late PagingData<T> value;
 
-  /// A ScrollController used to listen for when to fetch more
+  /// A ScrollController used basically to listen for scroll events
+  /// and to append more data when the scroll position hits
+  /// the prefetch distance
   ScrollController? _scrollController;
 
   ///
@@ -157,7 +155,7 @@ class _PagerState<K, T> extends State<Pager<K, T>> {
 
   ///This is triggered when we are reloading the page, e.g a new paging source
   _onRefresh(LoadParams<K> params) async {
-    if(_pageSubscriptions.containsKey(params.key)) return;
+    if (_pageSubscriptions.containsKey(params.key)) return;
 
     dispatchUpdates();
 
@@ -271,7 +269,7 @@ class _PagerState<K, T> extends State<Pager<K, T>> {
     final oldList = oldPage.data;
     final newList = newPage.data;
 
-    ///TODO: use The Myers difference algorithm to find the difference
+    ///Using The Myer's difference algorithm to find the difference
     final dataDiffUpdates = calculateListDiff(oldList, newList)
         .getUpdatesWithData();
 
@@ -307,8 +305,7 @@ class _PagerState<K, T> extends State<Pager<K, T>> {
       final oldPage = _pages.firstWhereOrNull((element) {
         return element.prevKey == prevKey;
       });
-      //TODO: We should not be adding to this page
-      // if the previous page is not up to load size
+      //TODO: We should not be adding to this page if the previous page is not up to load size
       if (null == oldPage && page.data.isNotEmpty) {
         _pages.add(page);
         inserted = true;
@@ -337,8 +334,10 @@ class _PagerState<K, T> extends State<Pager<K, T>> {
     final combinedStates = CombinedLoadStates(
         _states.refresh, _states.append, _states.prepend,
         source: sourceStates, mediator: mediatorStates);
+
     final pages = transformPages();
     final PagingData<T> event = PagingData(pages, loadStates: combinedStates);
+
     if (mounted) {
       setState(() {
         value = event;
@@ -386,7 +385,7 @@ class _PagerState<K, T> extends State<Pager<K, T>> {
 
   @override
   Widget build(BuildContext context) {
-    Widget builder = widget.builder(context, value, widget.child);
+    Widget builder = widget.builder(context, value);
     if (builder is ScrollView) {
       _scrollController = builder.controller;
     } else {

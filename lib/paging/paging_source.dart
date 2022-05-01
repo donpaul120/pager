@@ -4,6 +4,8 @@ import 'paging_data.dart';
 import 'paging_state.dart';
 import 'remote_mediator.dart';
 
+///@author Paul Okeke
+
 class PagingSource<Key, Value> {
 
   PagingSource({

@@ -16,7 +16,7 @@ void main() {
 
     await tester.pumpWidget(Pager(
         source: source,
-        builder: (ctx, d, da) {
+        builder: (ctx, d) {
           return const SizedBox();
         }
     ));
@@ -32,7 +32,7 @@ void main() {
 
     await tester.pumpWidget(Pager(
         source: source,
-        builder: (ctx, d, da) {
+        builder: (ctx, d) {
           return const SizedBox();
         }
     ));
@@ -47,7 +47,7 @@ void main() {
           children: [
             Expanded(child: Pager(
                 source: source,
-                builder: (ctx, d, da) {
+                builder: (ctx, d) {
                   return SizedBox(
                       height: 100,
                       child: ListView.builder(
