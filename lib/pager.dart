@@ -2,7 +2,7 @@ library pager;
 
 import 'dart:async';
 import 'dart:collection';
-import 'dart:developer';
+import 'package:diffutil_dart/diffutil.dart';
 import 'package:flutter/widgets.dart' hide Page;
 import 'package:synchronized/synchronized.dart';
 
@@ -249,9 +249,24 @@ class _PagerState<K, T> extends State<Pager<K, T>> {
     dispatchUpdates();
   }
 
-  bool _isSame(List<T> oldList, List<T> newList) {
-    //TODO: use a diff util to compare if there are changes
-    return false;
+  bool _calculateDiffAndUpdate(Page<K, T> oldPage, Page<K, T> newPage) {
+    final oldList = oldPage.data;
+    final newList = newPage.data;
+
+    ///TODO: use The Myers difference algorithm to find the difference
+    final dataDiffUpdates = calculateListDiff(oldList, newList)
+        .getUpdatesWithData();
+
+    final isSame = dataDiffUpdates.isEmpty;
+
+    if (!isSame) {
+      oldList.clear();
+      oldList.addAll(newList);
+      if (oldList.isEmpty) {
+        _pages.remove(oldPage);
+      }
+    }
+    return isSame;
   }
 
   insertOrUpdate(K? prevKey, Page<K, T> page) {
@@ -261,12 +276,7 @@ class _PagerState<K, T> extends State<Pager<K, T>> {
         _pages.add(page);
         inserted = true;
       } else if(_pages.isNotEmpty) {
-        final oldPage = _pages.first;
-        if (!_isSame(oldPage.data, page.data)) {
-          oldPage.data.clear();
-          oldPage.data.addAll(page.data);
-          inserted = true;
-        }
+        inserted = !_calculateDiffAndUpdate(_pages.first, page);
       }
     } else {
       //this is a possible append or prepend
@@ -285,14 +295,7 @@ class _PagerState<K, T> extends State<Pager<K, T>> {
         _pages.add(page);
         inserted = true;
       } else if (null != oldPage) {
-        if (!_isSame(oldPage.data, page.data)) {
-          oldPage.data.clear();
-          oldPage.data.addAll(page.data);
-          if (oldPage.data.isEmpty) {
-            _pages.remove(oldPage);
-          }
-          inserted = true;
-        }
+        inserted = !_calculateDiffAndUpdate(_pages.first, page);
       }
     }
     if (inserted) {
@@ -373,13 +376,3 @@ class _PagerState<K, T> extends State<Pager<K, T>> {
   }
 
 }
-
-///
-///load the data
-///keep the subscription open for each
-///when there's a refresh close all subscription
-///on each even update or insert the page
-///update the pager
-
-//how to determine the states since we are connect to local
-///RemoteMediator will
