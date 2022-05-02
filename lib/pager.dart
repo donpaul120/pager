@@ -231,18 +231,26 @@ class _PagerState<K, T> extends State<Pager<K, T>> {
 
   }
 
+  /// The next page key to fetch.
+  /// If the next key is null that would mean the last page
+  /// data isn't up to the [PagingConfig.pageSize] and thus the [Page.prevKey]
+  /// will be used instead
+  K? get _nextPageKey {
+    final lastPage = _pages.lastOrNull;
+    return lastPage?.nextKey ?? lastPage?.prevKey;
+  }
+
   _requestRemoteLoad(LoadType loadType) async {
     if (true == mediatorStates?.refresh.endOfPaginationReached ||
         true == mediatorStates?.append.endOfPaginationReached ||
-        _remoteMediator == null) {
+        null == _remoteMediator) {
       return;
     }
 
     mediatorStates = mediatorStates?.modifyState(loadType, Loading());
 
-    final List<Page<K, T>> currentPages = [..._pages];
     final result = await _remoteMediator?.load(
-        loadType, PagingState(currentPages, widget.pagingConfig)
+        loadType, PagingState<K, T>(_nextPageKey, widget.pagingConfig)
     );
 
     if (result is MediatorSuccess) {
@@ -377,7 +385,7 @@ class _PagerState<K, T> extends State<Pager<K, T>> {
   @override
   void didUpdateWidget(covariant Pager<K, T> oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if(oldWidget.source != _pagingSource) {
+    if (oldWidget.source != _pagingSource) {
       resetPager();
       _doLoad(LoadType.REFRESH);
     }
