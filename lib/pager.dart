@@ -28,7 +28,8 @@ class Pager<K, T> extends StatefulWidget {
     required this.source,
     required this.builder,
     this.pagingConfig = const PagingConfig.fromDefault(),
-    this.scrollController
+    this.scrollController,
+    this.keepAlive = false
   }) : super(key: key);
 
   final PagingSource<K, T> source;
@@ -39,12 +40,14 @@ class Pager<K, T> extends StatefulWidget {
 
   final ScrollController? scrollController;
 
+  final bool keepAlive;
+
   @override
   State<StatefulWidget> createState() => _PagerState<K,T>();
 
 }
 
-class _PagerState<K, T> extends State<Pager<K, T>> {
+class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClientMixin {
 
   ///
   final List<Page<K, T>> _pages = [];
@@ -103,6 +106,9 @@ class _PagerState<K, T> extends State<Pager<K, T>> {
     super.initState();
     _doInitialLoad();
   }
+
+  @override
+  bool get wantKeepAlive => widget.keepAlive;
 
   List<T> transformPages() {
     _totalNumberOfItems = 0;
@@ -393,6 +399,9 @@ class _PagerState<K, T> extends State<Pager<K, T>> {
 
   @override
   Widget build(BuildContext context) {
+    if (wantKeepAlive) {
+      super.build(context);
+    }
     Widget builder = widget.builder(context, value);
     if (builder is ScrollView) {
       _scrollController = builder.controller;
