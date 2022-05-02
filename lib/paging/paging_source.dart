@@ -1,12 +1,13 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
-
 import 'paging_data.dart';
 import 'paging_state.dart';
 import 'remote_mediator.dart';
 
+///@author Paul Okeke
+
 class PagingSource<Key, Value> {
+
   PagingSource({
     required this.localSource,
     this.remoteMediator
@@ -15,20 +16,61 @@ class PagingSource<Key, Value> {
   final Stream<Page<Key, Value>> Function(LoadParams<Key> loadParams) localSource;
   final RemoteMediator<Key, Value>? remoteMediator;
 
-  // final StreamController<Page<Key, Value>> _data = StreamController.broadcast();
-
-  Stream<Page<Key, Value>> readFromLocalSource(LoadParams<Key> loadParams) async* {
-    final stream = localSource.call(loadParams);
-    yield* stream;
+  @ExperimentalPagingApi()
+  PagingSource<Key, Value> sort([int Function(Value a, Value b)? compare]) {
+    return PagingSource(
+        localSource: (a) => localSource(a).map((event) {
+          final newData = event.data;
+          newData.sort(compare);
+          return Page(newData, event.prevKey, event.nextKey);
+        }),
+        remoteMediator: remoteMediator
+    );
   }
 
-  // PagingSource<Key, Value> forEach(Function(List<Value> a) callback) {
-  //
-  // }
-  //
-  // PagingSource<Key, Value> map(PagingSource<Key, Value> Function(PagingSource<Key, Value> a) event) {
-  //   return event.call(this);
-  // }
+  @ExperimentalPagingApi()
+  PagingSource<Key, Value> filter(bool Function(Value a) predicate) {
+    return PagingSource(
+        localSource: (params) => localSource(params).map((event) {
+          final newData = event.data.where(predicate).toList();
+          return Page(newData, event.prevKey, event.nextKey);
+        }),
+        remoteMediator: remoteMediator
+    );
+  }
+
+  @ExperimentalPagingApi()
+  PagingSource<Key, Value> forEach(Function(List<Value> a) callback) {
+    return PagingSource(
+        localSource: (params) {
+          final value = localSource(params);
+          value.forEach((element) {
+            callback.call(element.data);
+          });
+          return value;
+        },
+        remoteMediator: remoteMediator
+    );
+  }
+
+  @ExperimentalPagingApi()
+  PagingSource<Key, T> map<T>(T Function(Value a) predicate) {
+    return PagingSource(
+        localSource: (params) => localSource(params).map((event) {
+          final newData = event.data.map(predicate).toList();
+          return Page(newData, event.prevKey, event.nextKey);
+        }),
+      // remoteMediator: remoteMediator
+    );
+  }
+
+  @ExperimentalPagingApi()
+  PagingSource<Key, Value> take(int limit) {
+    return PagingSource(
+      localSource: (params) => localSource(params).take(limit),
+      remoteMediator: remoteMediator
+    );
+  }
 
   factory PagingSource.empty() {
     return PagingSource<Key, Value>(localSource: (a) => Stream.value(Page([], null, null)));
@@ -41,4 +83,8 @@ class LoadParams<K> {
   final int loadSize;
 
   LoadParams(this.loadType, this.key, this.loadSize);
+}
+
+class ExperimentalPagingApi {
+  const ExperimentalPagingApi();
 }

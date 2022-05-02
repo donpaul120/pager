@@ -2,11 +2,11 @@ import 'page_config.dart';
 import 'paging_data.dart';
 
 class PagingState<K, V> {
-  final List<Page<K, V>> data;
   final int? anchorPosition;
+  final K? nextKey;
   final PagingConfig pagingConfig;
 
-  PagingState(this.data, this.pagingConfig, {this.anchorPosition});
+  PagingState(this.nextKey, this.pagingConfig, {this.anchorPosition});
 }
 
 enum LoadType {
