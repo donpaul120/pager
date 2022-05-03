@@ -103,6 +103,8 @@ class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClient
     value = PagingData([]);
     _pagingSource = widget.source;
     _remoteMediator = _pagingSource?.remoteMediator;
+    print(_pagingSource.hashCode);
+    print(_remoteMediator.hashCode);
     super.initState();
     _doInitialLoad();
   }
@@ -332,9 +334,9 @@ class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClient
     }
   }
 
+  /// It's paramount that this ends before any other subscription is added
   _closeAllSubscriptions() async {
     if(_pageSubscriptions.isEmpty) return;
-
     await Future.microtask(() async {
       for (final subscription in _pageSubscriptions.entries) {
         await subscription.value.cancel();
@@ -379,21 +381,22 @@ class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClient
     scrollController?.addListener(_scrollListener);
   }
 
-  resetPager() {
+  Future<void> resetPager() async {
     _states = LoadStates.idle();
     sourceStates = LoadStates.idle();
     mediatorStates = LoadStates.idle();
     _pagingSource = widget.source;
     _remoteMediator = widget.source.remoteMediator;
-    _closeAllSubscriptions();
+    await invalidate(dispatch: false);
   }
 
   @override
   void didUpdateWidget(covariant Pager<K, T> oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.source != _pagingSource) {
-      resetPager();
-      _doLoad(LoadType.REFRESH);
+    if (widget.source != oldWidget.source) {
+      resetPager().then((value) {
+        _doInitialLoad();
+      });
     }
   }
 

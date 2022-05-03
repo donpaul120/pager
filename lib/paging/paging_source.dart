@@ -75,6 +75,17 @@ class PagingSource<Key, Value> {
   factory PagingSource.empty() {
     return PagingSource<Key, Value>(localSource: (a) => Stream.value(Page([], null, null)));
   }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PagingSource<Key, Value> &&
+          runtimeType == other.runtimeType &&
+          localSource == other.localSource &&
+          remoteMediator == other.remoteMediator;
+
+  @override
+  int get hashCode => localSource.hashCode ^ remoteMediator.hashCode;
 }
 
 class LoadParams<K> {
