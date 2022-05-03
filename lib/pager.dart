@@ -103,8 +103,6 @@ class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClient
     value = PagingData([]);
     _pagingSource = widget.source;
     _remoteMediator = _pagingSource?.remoteMediator;
-    print(_pagingSource.hashCode);
-    print(_remoteMediator.hashCode);
     super.initState();
     _doInitialLoad();
   }
