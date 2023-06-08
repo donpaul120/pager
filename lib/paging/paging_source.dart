@@ -3,6 +3,7 @@ import 'dart:async';
 import 'paging_data.dart';
 import 'paging_state.dart';
 import 'remote_mediator.dart';
+import 'package:collection/collection.dart' as Collections;
 
 ///@author Paul Okeke
 
@@ -60,6 +61,19 @@ class PagingSource<Key, Value> {
           final newData = event.data.map(predicate).toList();
           return Page(newData, event.prevKey, event.nextKey);
         }),
+      // remoteMediator: remoteMediator
+    );
+  }
+
+  @ExperimentalPagingApi()
+  PagingSource<Key, T> groupBy<K, T>(K Function(Value a) key, T Function(K key, List<Value> items) mapper) {
+    return PagingSource(
+      localSource: (params) => localSource(params).map((event) {
+        final groupedData = Collections.groupBy(event.data, key);
+        final newData = <T>[];
+        groupedData.forEach((key, value) => newData.add(mapper(key, value)));
+        return Page(newData, event.prevKey, event.nextKey);
+      }),
       // remoteMediator: remoteMediator
     );
   }
