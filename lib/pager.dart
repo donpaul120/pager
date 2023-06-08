@@ -86,7 +86,7 @@ class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClient
   PagingSource<K, T>? _pagingSource;
 
   ///
-  RemoteMediator<K, T>? _remoteMediator;
+  RemoteMediator<K, dynamic>? _remoteMediator;
 
   LoadParams<K> loadParams(LoadType loadType, K? key) {
     return LoadParams(

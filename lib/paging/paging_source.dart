@@ -15,7 +15,7 @@ class PagingSource<Key, Value> {
   });
 
   final Stream<Page<Key, Value>> Function(LoadParams<Key> loadParams) localSource;
-  final RemoteMediator<Key, Value>? remoteMediator;
+  final RemoteMediator<Key, dynamic>? remoteMediator;
 
   @ExperimentalPagingApi()
   PagingSource<Key, Value> sort([int Function(Value a, Value b)? compare]) {
@@ -61,7 +61,7 @@ class PagingSource<Key, Value> {
           final newData = event.data.map(predicate).toList();
           return Page(newData, event.prevKey, event.nextKey);
         }),
-      // remoteMediator: remoteMediator
+      remoteMediator: remoteMediator
     );
   }
 
@@ -74,7 +74,7 @@ class PagingSource<Key, Value> {
         groupedData.forEach((key, value) => newData.add(mapper(key, value)));
         return Page(newData, event.prevKey, event.nextKey);
       }),
-      // remoteMediator: remoteMediator
+      remoteMediator: remoteMediator
     );
   }
 
