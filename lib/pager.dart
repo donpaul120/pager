@@ -2,6 +2,7 @@ library pager;
 
 import 'dart:async';
 import 'dart:collection';
+import 'dart:developer';
 import 'package:diffutil_dart/diffutil.dart';
 import 'package:flutter/widgets.dart' hide Page;
 import 'package:synchronized/synchronized.dart';
@@ -120,6 +121,8 @@ class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClient
   }
 
   _doInitialLoad() {
+    print("Doing Intitial Load");
+    log("Doing Intitial Load");
     Future.microtask(() {
       mediatorStates = mediatorStates?.modifyState(LoadType.REFRESH, Loading());
       _requestRemoteLoad(LoadType.REFRESH);
@@ -384,7 +387,7 @@ class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClient
     sourceStates = LoadStates.idle();
     mediatorStates = LoadStates.idle();
     _pagingSource = widget.source;
-    _remoteMediator = widget.source.remoteMediator;
+    _remoteMediator = widget.source.remoteMediator as RemoteMediator<K, T>?;
     await invalidate(dispatch: false);
   }
 

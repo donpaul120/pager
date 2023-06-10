@@ -61,7 +61,7 @@ class PagingSource<Key, Value> {
           final newData = event.data.map(predicate).toList();
           return Page(newData, event.prevKey, event.nextKey);
         }),
-      remoteMediator: remoteMediator
+      remoteMediator: remoteMediator as RemoteMediator<Key, T>
     );
   }
 
