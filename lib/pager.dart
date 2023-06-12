@@ -81,7 +81,7 @@ class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClient
 
   /// Holds a subscription for each page fetched
   final LinkedHashMap<K?, StreamSubscription<Page<K, T>>> _pageSubscriptions =
-      LinkedHashMap();
+  LinkedHashMap();
 
   ///
   PagingSource<K, T>? _pagingSource;
@@ -121,8 +121,6 @@ class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClient
   }
 
   _doInitialLoad() {
-    print("Doing Intitial Load");
-    log("Doing Intitial Load");
     Future.microtask(() {
       mediatorStates = mediatorStates?.modifyState(LoadType.REFRESH, Loading());
       _requestRemoteLoad(LoadType.REFRESH);
@@ -371,13 +369,16 @@ class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClient
     final heightPerItem = maxScrollExtent / _totalNumberOfItems;
     final scrollOffsetPerItem = currentScrollExtent / heightPerItem;
 
+    print("Listening to scroll event!!!");
+
     if ((_totalNumberOfItems - scrollOffsetPerItem) <= prefetchDistance) {
       _doLoad(LoadType.APPEND);
     }
   }
-  
+
   void _registerScrollListener() {
     final scrollController = _scrollController ?? widget.scrollController;
+    print("ScrollController is $scrollController");
     scrollController?.removeListener(_scrollListener);
     scrollController?.addListener(_scrollListener);
   }
@@ -387,7 +388,7 @@ class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClient
     sourceStates = LoadStates.idle();
     mediatorStates = LoadStates.idle();
     _pagingSource = widget.source;
-    _remoteMediator = widget.source.remoteMediator as RemoteMediator<K, T>?;
+    _remoteMediator = widget.source.remoteMediator;
     await invalidate(dispatch: false);
   }
 
@@ -408,9 +409,12 @@ class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClient
     }
     Widget builder = widget.builder(context, value);
     if (builder is ScrollView) {
+      print("We have a scroll Controller");
       _scrollController = builder.controller;
     } else {
       _scrollController = widget.scrollController;
+      print("We don't have a controller");
+
     }
     _registerScrollListener();
     return builder;

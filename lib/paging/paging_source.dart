@@ -61,28 +61,28 @@ class PagingSource<Key, Value> {
           final newData = event.data.map(predicate).toList();
           return Page(newData, event.prevKey, event.nextKey);
         }),
-      remoteMediator: remoteMediator as RemoteMediator<Key, T>
+        remoteMediator: remoteMediator
     );
   }
 
   @ExperimentalPagingApi()
   PagingSource<Key, T> groupBy<K, T>(K Function(Value a) key, T Function(K key, List<Value> items) mapper) {
     return PagingSource(
-      localSource: (params) => localSource(params).map((event) {
-        final groupedData = Collections.groupBy(event.data, key);
-        final newData = <T>[];
-        groupedData.forEach((key, value) => newData.add(mapper(key, value)));
-        return Page(newData, event.prevKey, event.nextKey);
-      }),
-      remoteMediator: remoteMediator
+        localSource: (params) => localSource(params).map((event) {
+          final groupedData = Collections.groupBy(event.data, key);
+          final newData = <T>[];
+          groupedData.forEach((key, value) => newData.add(mapper(key, value)));
+          return Page(newData, event.prevKey, event.nextKey);
+        }),
+        remoteMediator: remoteMediator
     );
   }
 
   @ExperimentalPagingApi()
   PagingSource<Key, Value> take(int limit) {
     return PagingSource(
-      localSource: (params) => localSource(params).take(limit),
-      remoteMediator: remoteMediator
+        localSource: (params) => localSource(params).take(limit),
+        remoteMediator: remoteMediator
     );
   }
 
@@ -93,10 +93,10 @@ class PagingSource<Key, Value> {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is PagingSource<Key, Value> &&
-          runtimeType == other.runtimeType &&
-          localSource == other.localSource &&
-          remoteMediator == other.remoteMediator;
+          other is PagingSource<Key, Value> &&
+              runtimeType == other.runtimeType &&
+              localSource == other.localSource &&
+              remoteMediator == other.remoteMediator;
 
   @override
   int get hashCode => localSource.hashCode ^ remoteMediator.hashCode;
