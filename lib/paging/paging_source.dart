@@ -72,8 +72,9 @@ class PagingSource<Key, Value> {
           final groupedData = Collections.groupBy(event.data, key);
           final newData = <T>[];
           groupedData.forEach((key, value) => newData.add(mapper(key, value)));
-          return Page(newData, event.prevKey, event.nextKey);
-        }),
+              return GroupedPagedData(
+                  newData, event.prevKey, event.nextKey, event.data.length);
+            }),
         remoteMediator: remoteMediator
     );
   }
@@ -108,6 +109,15 @@ class LoadParams<K> {
   final int loadSize;
 
   LoadParams(this.loadType, this.key, this.loadSize);
+}
+
+class GroupedPagedData<Key, Value> extends Page<Key, Value> {
+  GroupedPagedData(
+      List<Value> data,
+      Key? prevKey, Key? nextKey, this.originalDataSize
+      ) : super(data, prevKey, nextKey);
+
+  final int originalDataSize;
 }
 
 class ExperimentalPagingApi {

@@ -2,7 +2,6 @@ library pager;
 
 import 'dart:async';
 import 'dart:collection';
-import 'dart:developer';
 import 'package:diffutil_dart/diffutil.dart';
 import 'package:flutter/widgets.dart' hide Page;
 import 'package:synchronized/synchronized.dart';
@@ -114,7 +113,7 @@ class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClient
   List<T> transformPages() {
     _totalNumberOfItems = 0;
     return _pages.fold(<T>[], (List<T> previousValue, element) {
-      _totalNumberOfItems += element.data.length;
+      _totalNumberOfItems += getPageSize(element);
       previousValue.addAll(element.data);
       return previousValue;
     });
@@ -160,6 +159,13 @@ class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClient
     });
   }
 
+  int getPageSize(Page<K, T> page) {
+    if (page is GroupedPagedData) {
+      return (page as GroupedPagedData).originalDataSize;
+    }
+    return page.data.length;
+  }
+
   ///This is triggered when we are reloading the page, e.g a new paging source
   _onRefresh(LoadParams<K> params) async {
     if (_pageSubscriptions.containsKey(params.key)) return;
@@ -169,14 +175,12 @@ class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClient
     final localSource = widget.source.localSource.call(params);
     final subscription = localSource.listen((page) {
 
-      final newData = page.data;
-
       if (_pages.isNotEmpty) {
         insertOrUpdate(page.prevKey, page);
         return;
       }
 
-      if (newData.length < widget.pagingConfig.initialPageSize) {
+      if (getPageSize(page) < widget.pagingConfig.initialPageSize) {
         sourceStates = sourceStates
             ?.modifyState(LoadType.REFRESH, NotLoading(true))
             .modifyState(LoadType.APPEND, NotLoading(true))
@@ -217,7 +221,7 @@ class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClient
         return;
       }
 
-      final endOfPage = newData.length < widget.pagingConfig.pageSize;
+      final endOfPage = getPageSize(page) < widget.pagingConfig.pageSize;
 
       sourceStates = sourceStates
           ?.modifyState(LoadType.REFRESH, NotLoading(true))
@@ -369,7 +373,6 @@ class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClient
     final heightPerItem = maxScrollExtent / _totalNumberOfItems;
     final scrollOffsetPerItem = currentScrollExtent / heightPerItem;
 
-    print("Listening to scroll event!!!");
 
     if ((_totalNumberOfItems - scrollOffsetPerItem) <= prefetchDistance) {
       _doLoad(LoadType.APPEND);
@@ -378,7 +381,6 @@ class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClient
 
   void _registerScrollListener() {
     final scrollController = _scrollController ?? widget.scrollController;
-    print("ScrollController is $scrollController");
     scrollController?.removeListener(_scrollListener);
     scrollController?.addListener(_scrollListener);
   }
@@ -409,12 +411,9 @@ class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClient
     }
     Widget builder = widget.builder(context, value);
     if (builder is ScrollView) {
-      print("We have a scroll Controller");
       _scrollController = builder.controller;
     } else {
       _scrollController = widget.scrollController;
-      print("We don't have a controller");
-
     }
     _registerScrollListener();
     return builder;
