@@ -264,7 +264,6 @@ class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClient
       return;
     }
 
-    print('MMStatesAppend ====>>> ${mediatorStates?.append.endOfPaginationReached}');
     mediatorStates = mediatorStates?.modifyState(loadType, Loading());
 
     final result = await _remoteMediator?.load(
@@ -275,7 +274,6 @@ class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClient
       mediatorStates = mediatorStates?.modifyState(
           loadType, NotLoading(result.endOfPaginationReached)
       );
-      print("MediatorStates =====> $mediatorStates");
       _doLoad(loadType);
     } else if (result is MediatorError) {
       mediatorStates = mediatorStates?.modifyState(
