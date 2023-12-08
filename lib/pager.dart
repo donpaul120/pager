@@ -114,9 +114,22 @@ class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClient
     _totalNumberOfItems = 0;
     return _pages.fold(<T>[], (List<T> previousValue, element) {
       _totalNumberOfItems += getPageSize(element);
-      previousValue.addAll(element.data);
+      previousValue.addAll(transformGroupData(previousValue, element));
       return previousValue;
     });
+  }
+
+  List<T> transformGroupData(List<T> previousValue, Page<K, T> element) {
+    if (previousValue is PageGroupData && element is PageGroup &&
+        element.data.firstOrNull is PageGroupData) {
+      final lastItemInPrevious = previousValue.lastOrNull as PageGroupData?;
+      final firstItemInElement = element.data.firstOrNull as PageGroupData?;
+      if (lastItemInPrevious?.key == firstItemInElement?.key) {
+        lastItemInPrevious?.items.addAll(firstItemInElement?.items ?? []);
+        return List.empty();
+      }
+    }
+    return element.data;
   }
 
   _doInitialLoad() {
@@ -160,8 +173,8 @@ class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClient
   }
 
   int getPageSize(Page<K, T> page) {
-    if (page is GroupedPagedData) {
-      return (page as GroupedPagedData).originalDataSize;
+    if (page is PageGroup) {
+      return (page as PageGroup).originalDataSize;
     }
     return page.data.length;
   }
@@ -231,6 +244,8 @@ class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClient
 
       insertOrUpdate(page.prevKey, page);
 
+      //Pause and resume to avoid reading from local source while still computing
+      //The mediatorStates
       if (newData.isEmpty || endOfPage) {
         subscription?.pause();
         await _requestRemoteLoad(LoadType.APPEND);
