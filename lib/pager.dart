@@ -120,7 +120,7 @@ class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClient
   }
 
   List<T> transformGroupData(List<T> previousValue, Page<K, T> element) {
-    if (previousValue is PageGroupData && element is PageGroup &&
+    if (previousValue.lastOrNull is PageGroupData && element is PageGroup &&
         element.data.firstOrNull is PageGroupData) {
       final lastItemInPrevious = previousValue.lastOrNull as PageGroupData?;
       final firstItemInElement = element.data.firstOrNull as PageGroupData?;
