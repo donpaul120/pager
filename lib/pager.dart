@@ -167,7 +167,7 @@ class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClient
   }
 
   ///This is triggered when we are reloading the page, e.g a new paging source
-  _onRefresh(LoadParams<K> params) async {
+  FutureOr<void> _onRefresh(LoadParams<K> params) async {
     if (_pageSubscriptions.containsKey(params.key)) return;
 
     dispatchUpdates();
@@ -197,7 +197,8 @@ class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClient
     _pageSubscriptions.putIfAbsent(params.key, () => subscription);
   }
 
-  _onAppend(LoadParams<K> params) async {
+  FutureOr<void> _onAppend(LoadParams<K> params) async {
+    final Completer completer = Completer();
 
     if (_pageSubscriptions.containsKey(params.key)) {
       return;
@@ -206,7 +207,7 @@ class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClient
     final localSource = widget.source.localSource.call(params);
     StreamSubscription<Page<K, T>>? subscription;
 
-    subscription = localSource.listen((page) {
+    subscription = localSource.listen((page) async {
       if (_pages.isEmpty) {
         subscription?.cancel();
         _pageSubscriptions.remove(params.key);
@@ -228,14 +229,19 @@ class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClient
           .modifyState(LoadType.APPEND, NotLoading(endOfPage))
           .modifyState(LoadType.PREPEND, NotLoading(true));
 
+      insertOrUpdate(page.prevKey, page);
+
       if (newData.isEmpty || endOfPage) {
-        _requestRemoteLoad(LoadType.APPEND);
+        subscription?.pause();
+        await _requestRemoteLoad(LoadType.APPEND);
+        subscription?.resume();
       }
 
-      insertOrUpdate(page.prevKey, page);
+      if (!completer.isCompleted) completer.complete();
     });
     _pageSubscriptions.putIfAbsent(params.key, () => subscription!);
     dispatchUpdates();
+    return completer.future;
   }
 
   onPrepend(LoadParams params) {
@@ -251,13 +257,14 @@ class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClient
     return lastPage?.nextKey ?? lastPage?.prevKey;
   }
 
-  _requestRemoteLoad(LoadType loadType) async {
+  FutureOr<void> _requestRemoteLoad(LoadType loadType) async {
     if (true == mediatorStates?.refresh.endOfPaginationReached ||
         true == mediatorStates?.append.endOfPaginationReached ||
         null == _remoteMediator) {
       return;
     }
 
+    print('MMStatesAppend ====>>> ${mediatorStates?.append.endOfPaginationReached}');
     mediatorStates = mediatorStates?.modifyState(loadType, Loading());
 
     final result = await _remoteMediator?.load(
@@ -268,6 +275,7 @@ class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClient
       mediatorStates = mediatorStates?.modifyState(
           loadType, NotLoading(result.endOfPaginationReached)
       );
+      print("MediatorStates =====> $mediatorStates");
       _doLoad(loadType);
     } else if (result is MediatorError) {
       mediatorStates = mediatorStates?.modifyState(
