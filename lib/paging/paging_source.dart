@@ -66,17 +66,17 @@ class PagingSource<Key, Value> {
   }
 
   @ExperimentalPagingApi()
-  PagingSource<Key, T> groupBy<K, T>(K Function(Value a) key, T Function(K key, List<Value> items) mapper) {
+  PagingSource<Key, T> groupBy<K, T>(
+      K Function(Value a) key, T Function(K key, List<Value> items) mapper) {
     return PagingSource(
         localSource: (params) => localSource(params).map((event) {
-          final groupedData = Collections.groupBy(event.data, key);
-          final newData = <T>[];
-          groupedData.forEach((key, value) => newData.add(mapper(key, value)));
-              return GroupedPagedData(
+              final groupedData = Collections.groupBy(event.data, key);
+              final newData = <T>[];
+              groupedData.forEach((key, value) => newData.add(mapper(key, value)));
+              return PageGroup(
                   newData, event.prevKey, event.nextKey, event.data.length);
             }),
-        remoteMediator: remoteMediator
-    );
+        remoteMediator: remoteMediator);
   }
 
   @ExperimentalPagingApi()
@@ -111,13 +111,21 @@ class LoadParams<K> {
   LoadParams(this.loadType, this.key, this.loadSize);
 }
 
-class GroupedPagedData<Key, Value> extends Page<Key, Value> {
-  GroupedPagedData(
+///
+class PageGroup<Key, Value> extends Page<Key, Value> {
+  PageGroup(
       List<Value> data,
       Key? prevKey, Key? nextKey, this.originalDataSize
       ) : super(data, prevKey, nextKey);
 
   final int originalDataSize;
+}
+
+///
+abstract class PageGroupData<K, Value> {
+  final K key;
+  final List<Value> items;
+  PageGroupData({required this.key, required this.items});
 }
 
 class ExperimentalPagingApi {
