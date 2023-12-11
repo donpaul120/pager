@@ -125,7 +125,12 @@ class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClient
       final lastItemInPrevious = previousValue.lastOrNull as PageGroupData?;
       final firstItemInElement = element.data.firstOrNull as PageGroupData?;
       if (lastItemInPrevious?.key == firstItemInElement?.key) {
-        lastItemInPrevious?.items.addAll(firstItemInElement?.items ?? []);
+        //TODO we can optimize
+        firstItemInElement?.items.forEach((item) {
+          if (lastItemInPrevious?.items.contains(item) == false) {
+            lastItemInPrevious?.items.add(item);
+          }
+        });
         return List.empty();
       }
     }
