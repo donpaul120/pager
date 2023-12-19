@@ -131,7 +131,7 @@ class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClient
             lastItemInPrevious?.items.add(item);
           }
         });
-        return List.empty();
+        return element.data.slice(1);
       }
     }
     return element.data;
