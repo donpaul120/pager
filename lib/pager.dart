@@ -4,6 +4,8 @@ import 'dart:async';
 import 'dart:collection';
 import 'package:diffutil_dart/diffutil.dart';
 import 'package:flutter/widgets.dart' hide Page;
+import 'package:pager/paging/mixin/paging_data_view_display_delegate.dart';
+import 'package:pager/paging/paged_list_view.dart';
 import 'package:synchronized/synchronized.dart';
 
 import 'paging/combined_load_state.dart';
@@ -16,29 +18,43 @@ import 'paging/paging_state.dart';
 import 'paging/remote_mediator.dart';
 import 'package:collection/collection.dart';
 
-
 /// @author Paul Okeke
 /// A Paging Library
 
 typedef PagingBuilder<T> = Widget Function(BuildContext context, T value);
 
 class Pager<K, T> extends StatefulWidget {
-  const Pager({
-    Key? key,
-    required this.source,
-    required this.builder,
-    this.pagingConfig = const PagingConfig.fromDefault(),
-    this.scrollController,
-    this.keepAlive = false
-  }) : super(key: key);
+  const Pager(
+      {Key? key,
+      required this.source,
+      this.builder,
+      this.pagingConfig = const PagingConfig.fromDefault(),
+      this.scrollController,
+      this.keepAlive = false,
+      this.animate = false,
+      this.loadingView,
+      this.emptyView,
+      this.itemBuilder,
+      this.separatorBuilder,
+      this.errorView,
+      this.bottomLoadingIndicator})
+      : super(key: key);
 
   final PagingSource<K, T> source;
 
-  final PagingBuilder<PagingData<T>> builder;
+  final PagingBuilder<PagingData<T>>? builder;
 
   final PagingConfig pagingConfig;
 
   final ScrollController? scrollController;
+
+  final Widget? loadingView;
+  final bool animate;
+  final Widget Function()? emptyView;
+  final Widget? Function(T data)? itemBuilder;
+  final Widget? Function(BuildContext, int)? separatorBuilder;
+  final Widget? Function(Exception? error)? errorView;
+  final Widget? bottomLoadingIndicator;
 
   final bool keepAlive;
 
@@ -47,7 +63,7 @@ class Pager<K, T> extends StatefulWidget {
 
 }
 
-class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClientMixin {
+class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClientMixin, PagingDataViewDisplayDelegate {
 
   ///
   final List<Page<K, T>> _pages = [];
@@ -192,7 +208,6 @@ class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClient
 
     final localSource = widget.source.localSource.call(params);
     final subscription = localSource.listen((page) {
-
       if (_pages.isNotEmpty) {
         insertOrUpdate(page.prevKey, page);
         return;
@@ -399,7 +414,6 @@ class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClient
     final heightPerItem = maxScrollExtent / _totalNumberOfItems;
     final scrollOffsetPerItem = currentScrollExtent / heightPerItem;
 
-
     if ((_totalNumberOfItems - scrollOffsetPerItem) <= prefetchDistance) {
       _doLoad(LoadType.APPEND);
     }
@@ -435,7 +449,9 @@ class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClient
     if (wantKeepAlive) {
       super.build(context);
     }
-    Widget builder = widget.builder(context, value);
+    Widget builder = widget.itemBuilder != null
+        ? _buildContent(context, widget.scrollController, value)
+        : widget.builder?.call(context, value) ?? const SizedBox.shrink();
     if (builder is ScrollView) {
       _scrollController = builder.controller;
     } else {
@@ -443,6 +459,30 @@ class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClient
     }
     _registerScrollListener();
     return builder;
+  }
+
+  Widget _buildContent(BuildContext context, ScrollController? scrollController,
+      PagingData<T> value) {
+    return renderOnlyWhenRemoteIsUpdated(
+      data: value,
+      successView: (data) => PagedListView(
+        itemBuilder: (context, index) {
+          final item = data[index];
+          return widget.itemBuilder?.call(item as T) ?? const SizedBox.shrink();
+        },
+        itemCount: data.length,
+        separatorBuilder: (ctx, index) =>
+            widget.separatorBuilder?.call(ctx, index) ??
+            const SizedBox.shrink(),
+        controller: scrollController ?? ScrollController(),
+        loadState: value.loadStates?.append,
+        bottomLoadingIndicator: widget.bottomLoadingIndicator,
+      ),
+      errorView: (err) =>
+          widget.errorView?.call(err) ?? const SizedBox.shrink(),
+      loadingView: widget.loadingView,
+      emptyView: () => widget.emptyView?.call() ?? const SizedBox.shrink(),
+    );
   }
 
   @override
