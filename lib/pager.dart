@@ -175,7 +175,6 @@ class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClient
         final nextKey = _pages.last.nextKey;
         params = loadParams(loadType, nextKey);
       }
-
       switch (loadType) {
         case LoadType.REFRESH:
           sourceStates = sourceStates?.modifyState(loadType, Loading());
@@ -475,7 +474,7 @@ class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClient
             widget.separatorBuilder?.call(ctx, index) ??
             const SizedBox.shrink(),
         controller: scrollController ?? ScrollController(),
-        loadState: value.loadStates?.append,
+        loadState: _states.append,
         bottomLoadingIndicator: widget.bottomLoadingIndicator,
       ),
       errorView: (err) =>
