@@ -4,8 +4,8 @@ import 'dart:async';
 import 'dart:collection';
 import 'package:diffutil_dart/diffutil.dart';
 import 'package:flutter/widgets.dart' hide Page;
-import 'package:pager/paging/mixin/paging_data_view_display_delegate.dart';
-import 'package:pager/paging/paged_list_view.dart';
+import 'package:pager/paging/paged_layout_builder.dart';
+import 'package:pager/paging/paged_list_view_display_deligate.dart';
 import 'package:synchronized/synchronized.dart';
 
 import 'paging/combined_load_state.dart';
@@ -32,29 +32,28 @@ class Pager<K, T> extends StatefulWidget {
       this.scrollController,
       this.keepAlive = false,
       this.animate = false,
-      this.loadingView,
-      this.emptyView,
-      this.itemBuilder,
-      this.separatorBuilder,
-      this.errorView,
-      this.bottomLoadingIndicator})
+      this.shrinkWrap = false,
+      this.padding,
+      this.pagingBuilderDelegate,
+      })
       : super(key: key);
 
   final PagingSource<K, T> source;
 
+  @Deprecated('Use pagingBuilderDelegate instead')
   final PagingBuilder<PagingData<T>>? builder;
+
+  final PagingBuilderDelegate<T>? pagingBuilderDelegate;
 
   final PagingConfig pagingConfig;
 
   final ScrollController? scrollController;
 
-  final Widget? loadingView;
+  final EdgeInsetsGeometry? padding;
+
   final bool animate;
-  final Widget Function()? emptyView;
-  final Widget? Function(T data)? itemBuilder;
-  final Widget? Function(BuildContext, int)? separatorBuilder;
-  final Widget? Function(Exception? error)? errorView;
-  final Widget? bottomLoadingIndicator;
+
+  final bool shrinkWrap;
 
   final bool keepAlive;
 
@@ -63,8 +62,8 @@ class Pager<K, T> extends StatefulWidget {
 
 }
 
-class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClientMixin, PagingDataViewDisplayDelegate {
-
+class _PagerState<K, T> extends State<Pager<K, T>>
+    with AutomaticKeepAliveClientMixin{
   ///
   final List<Page<K, T>> _pages = [];
 
@@ -379,7 +378,7 @@ class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClient
 
   /// It's paramount that this ends before any other subscription is added
   _closeAllSubscriptions() async {
-    if(_pageSubscriptions.isEmpty) return;
+    if (_pageSubscriptions.isEmpty) return;
     await Future.microtask(() async {
       for (final subscription in _pageSubscriptions.entries) {
         await subscription.value.cancel();
@@ -448,7 +447,7 @@ class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClient
     if (wantKeepAlive) {
       super.build(context);
     }
-    Widget builder = widget.itemBuilder != null
+    Widget builder = widget.pagingBuilderDelegate != null
         ? _buildContent(context, widget.scrollController, value)
         : widget.builder?.call(context, value) ?? const SizedBox.shrink();
     if (builder is ScrollView) {
@@ -462,26 +461,12 @@ class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClient
 
   Widget _buildContent(BuildContext context, ScrollController? scrollController,
       PagingData<T> value) {
-    return renderOnlyWhenRemoteIsUpdated(
-      data: value,
-      successView: (data) => PagedListView(
-        itemBuilder: (context, index) {
-          final item = data[index];
-          return widget.itemBuilder?.call(item as T) ?? const SizedBox.shrink();
-        },
-        itemCount: data.length,
-        separatorBuilder: (ctx, index) =>
-            widget.separatorBuilder?.call(ctx, index) ??
-            const SizedBox.shrink(),
-        controller: scrollController ?? ScrollController(),
-        loadState: _states.append,
-        bottomLoadingIndicator: widget.bottomLoadingIndicator,
-      ),
-      errorView: (err) =>
-          widget.errorView?.call(err) ?? const SizedBox.shrink(),
-      loadingView: widget.loadingView,
-      emptyView: () => widget.emptyView?.call() ?? const SizedBox.shrink(),
-    );
+    return PagedLayoutBuilder(
+        data: value,
+        controller: _scrollController,
+        padding: widget.padding,
+        shrinkWrap: widget.shrinkWrap,
+        delegate: widget.pagingBuilderDelegate!,);
   }
 
   @override
@@ -489,5 +474,4 @@ class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClient
     invalidate(dispatch: false);
     super.dispose();
   }
-
 }
