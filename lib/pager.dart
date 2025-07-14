@@ -404,9 +404,7 @@ class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClient
 
 
     if ((_totalNumberOfItems - scrollOffsetPerItem) <= prefetchDistance) {
-      if(_states.append is! Loading && !_states.append.endOfPaginationReached) {
-        _doLoad(LoadType.APPEND);
-      }
+      _doLoad(LoadType.APPEND);
     }
   }
 
