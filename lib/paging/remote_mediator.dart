@@ -8,16 +8,25 @@ abstract class RemoteMediator<K, V> extends ValueNotifier<MediatorResult?> {
 }
 
 class MediatorResult {
+  final int totalItems;
 
-  MediatorResult();
+  MediatorResult({this.totalItems = 0});
 
-  factory MediatorResult.success({bool endOfPaginationReached = true}) => MediatorSuccess(endOfPaginationReached);
-  factory MediatorResult.error({required Exception exception}) => MediatorError(exception);
+  factory MediatorResult.success({
+    bool endOfPaginationReached = true,
+    int totalItems = 0,
+  }) =>
+      MediatorSuccess(endOfPaginationReached, totalItems);
+
+  factory MediatorResult.error({required Exception exception}) =>
+      MediatorError(exception);
 }
 
 class MediatorSuccess extends MediatorResult {
   final bool endOfPaginationReached;
-  MediatorSuccess(this.endOfPaginationReached);
+
+  MediatorSuccess(this.endOfPaginationReached, int totalItems)
+      : super(totalItems: totalItems);
 
   @override
   String toString() {

@@ -1,14 +1,18 @@
-
 class LoadState {
   final bool endOfPaginationReached;
-  LoadState(this.endOfPaginationReached);
+  final int? totalItems;
+
+  LoadState(this.endOfPaginationReached, {this.totalItems = 0});
+
   String toString() {
-    return "LoadState(endOfPaginationReached=$endOfPaginationReached)";
+    return "LoadState(endOfPaginationReached=$endOfPaginationReached, totalItems=$totalItems)";
   }
 }
 
 class NotLoading extends LoadState {
-  NotLoading(bool endOfPaginationReached): super(endOfPaginationReached);
+  NotLoading(bool endOfPaginationReached, {int? totalItems})
+      : super(endOfPaginationReached, totalItems: totalItems);
+
   @override
   String toString() {
     return "NotLoading(endOfPaginationReached=$endOfPaginationReached)";

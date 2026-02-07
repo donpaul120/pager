@@ -16,7 +16,6 @@ import 'paging/paging_state.dart';
 import 'paging/remote_mediator.dart';
 import 'package:collection/collection.dart';
 
-
 /// @author Paul Okeke
 /// A Paging Library
 
@@ -292,7 +291,11 @@ class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClient
 
     if (result is MediatorSuccess) {
       mediatorStates = mediatorStates?.modifyState(
-          loadType, NotLoading(result.endOfPaginationReached)
+        loadType,
+        NotLoading(
+          result.endOfPaginationReached,
+          totalItems: result.totalItems,
+        ),
       );
       _doLoad(loadType);
     } else if (result is MediatorError) {
