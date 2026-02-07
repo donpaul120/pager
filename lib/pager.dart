@@ -22,14 +22,14 @@ import 'package:collection/collection.dart';
 typedef PagingBuilder<T> = Widget Function(BuildContext context, T value);
 
 class Pager<K, T> extends StatefulWidget {
-  const Pager(
-      {Key? key,
+  const Pager({
+    Key? key,
       required this.source,
       required this.builder,
       this.pagingConfig = const PagingConfig.fromDefault(),
       this.scrollController,
-      this.keepAlive = false})
-      : super(key: key);
+    this.keepAlive = false
+  }) : super(key: key);
 
   final PagingSource<K, T> source;
 
@@ -79,7 +79,7 @@ class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClient
 
   /// Holds a subscription for each page fetched
   final LinkedHashMap<K?, StreamSubscription<Page<K, T>>> _pageSubscriptions =
-  LinkedHashMap();
+      LinkedHashMap();
 
   ///
   PagingSource<K, T>? _pagingSource;
@@ -130,7 +130,7 @@ class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClient
             lastItemInPrevious?.items.add(item);
           }
         });
-        return List.empty();
+        return element.data.slice(1);
       }
     }
     return element.data;
@@ -368,9 +368,12 @@ class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClient
 
   /// It's paramount that this ends before any other subscription is added
   _closeAllSubscriptions() async {
-    if(_pageSubscriptions.isEmpty) return;
+    if (_pageSubscriptions.isEmpty) return;
+
+    final subscriptions = [..._pageSubscriptions.entries];
+
     await Future.microtask(() async {
-      for (final subscription in _pageSubscriptions.entries) {
+      for (final subscription in subscriptions) {
         await subscription.value.cancel();
       }
       _pageSubscriptions.clear();
