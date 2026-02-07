@@ -16,21 +16,20 @@ import 'paging/paging_state.dart';
 import 'paging/remote_mediator.dart';
 import 'package:collection/collection.dart';
 
-
 /// @author Paul Okeke
 /// A Paging Library
 
 typedef PagingBuilder<T> = Widget Function(BuildContext context, T value);
 
 class Pager<K, T> extends StatefulWidget {
-  const Pager({
-    Key? key,
-    required this.source,
-    required this.builder,
-    this.pagingConfig = const PagingConfig.fromDefault(),
-    this.scrollController,
-    this.keepAlive = false
-  }) : super(key: key);
+  const Pager(
+      {Key? key,
+      required this.source,
+      required this.builder,
+      this.pagingConfig = const PagingConfig.fromDefault(),
+      this.scrollController,
+      this.keepAlive = false})
+      : super(key: key);
 
   final PagingSource<K, T> source;
 
@@ -292,7 +291,11 @@ class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClient
 
     if (result is MediatorSuccess) {
       mediatorStates = mediatorStates?.modifyState(
-          loadType, NotLoading(result.endOfPaginationReached)
+        loadType,
+        NotLoading(
+          result.endOfPaginationReached,
+          totalItems: result.totalItems,
+        ),
       );
       _doLoad(loadType);
     } else if (result is MediatorError) {
