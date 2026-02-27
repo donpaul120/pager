@@ -1,5 +1,4 @@
 import 'page_config.dart';
-import 'paging_data.dart';
 
 class PagingState<K, V> {
   final int? anchorPosition;

@@ -1,10 +1,18 @@
+/// Pager - Flutter Pagination Library
+/// 
+/// A reactive pagination library inspired by Android's Paging Library 3.
+/// 
+/// **BREAKING CHANGE in v1.0.0**: This library has been completely rewritten.
+/// The old widget-based API is deprecated. Use the new reactive stream-based API instead.
+/// 
+/// For the new API, import: `package:pager/paging3/paging3.dart`
+/// 
+/// Legacy API (deprecated):
 library pager;
 
 import 'dart:async';
 import 'dart:collection';
-import 'package:diffutil_dart/diffutil.dart';
 import 'package:flutter/widgets.dart' hide Page;
-import 'package:synchronized/synchronized.dart';
 
 import 'paging/combined_load_state.dart';
 import 'paging/load_state.dart';
@@ -14,14 +22,65 @@ import 'paging/paging_data.dart';
 import 'paging/paging_source.dart';
 import 'paging/paging_state.dart';
 import 'paging/remote_mediator.dart';
-import 'package:collection/collection.dart';
 
+/// Simple lock implementation for serializing async operations (legacy pager internal use)
+class _PagerLock {
+  bool _locked = false;
+  final Queue<Completer> _queue = Queue<Completer>();
+
+  Future<T> synchronized<T>(Future<T> Function() computation) async {
+    final completer = Completer<T>();
+    
+    if (_locked) {
+      _queue.add(completer);
+      await completer.future;
+    }
+    
+    _locked = true;
+    
+    try {
+      final result = await computation();
+      completer.complete(result);
+      return result;
+    } catch (e) {
+      completer.completeError(e);
+      rethrow;
+    } finally {
+      _locked = false;
+      if (_queue.isNotEmpty) {
+        final next = _queue.removeFirst();
+        next.complete();
+      }
+    }
+  }
+}
+
+/// Extension to add missing methods to List
+extension ListExtensions<T> on List<T> {
+  T? get lastOrNull => isEmpty ? null : last;
+  
+  T? firstWhereOrNull(bool Function(T) test) {
+    try {
+      return firstWhere(test);
+    } catch (e) {
+      return null;
+    }
+  }
+  
+  List<T> slice(int start) {
+    return skip(start).toList();
+  }
+}
 
 /// @author Paul Okeke
-/// A Paging Library
+/// A Paging Library (Legacy API - DEPRECATED)
+/// 
+/// **DEPRECATED**: Use the new Paging3 API instead.
+/// Import: `package:pager/paging3/paging3.dart`
 
 typedef PagingBuilder<T> = Widget Function(BuildContext context, T value);
 
+@Deprecated('Use the new Paging3 API: import "package:pager/paging3/paging3.dart"')
 class Pager<K, T> extends StatefulWidget {
   const Pager({
     Key? key,
@@ -64,7 +123,7 @@ class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClient
   /// Remote data state
   LoadStates? mediatorStates = LoadStates.idle();
 
-  final lock = Lock();
+  final _lock = _PagerLock();
 
   /// The Current PagingData value. This value is what is passed
   /// to the PagingBuilder when the data is updated/changes
@@ -148,7 +207,7 @@ class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClient
   _doLoad(LoadType loadType) async {
     LoadParams<K> params;
 
-    await lock.synchronized(() async {
+    await _lock.synchronized(() async {
       if (loadType == LoadType.REFRESH && _pages.isNotEmpty) {
         await invalidate();
       }
@@ -314,11 +373,16 @@ class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClient
     final oldList = oldPage.data;
     final newList = newPage.data;
 
-    ///Using The Myer's difference algorithm to find the difference
-    final dataDiffUpdates = calculateListDiff(oldList, newList)
-        .getUpdatesWithData();
-
-    final isSame = dataDiffUpdates.isEmpty;
+    /// Simple difference check - replace with proper diff algorithm if needed
+    bool isSame = oldList.length == newList.length;
+    if (isSame) {
+      for (int i = 0; i < oldList.length; i++) {
+        if (oldList[i] != newList[i]) {
+          isSame = false;
+          break;
+        }
+      }
+    }
 
     if (!isSame) {
       oldList.clear();
