@@ -1,454 +1,223 @@
 library pager;
 
-import 'dart:async';
-import 'dart:collection';
-import 'package:diffutil_dart/diffutil.dart';
 import 'package:flutter/widgets.dart' hide Page;
-import 'package:synchronized/synchronized.dart';
 
 import 'paging/combined_load_state.dart';
 import 'paging/load_state.dart';
 import 'paging/load_states.dart';
+import 'paging/page_cache.dart';
 import 'paging/page_config.dart';
+import 'paging/pager_controller.dart';
 import 'paging/paging_data.dart';
 import 'paging/paging_source.dart';
 import 'paging/paging_state.dart';
 import 'paging/remote_mediator.dart';
-import 'package:collection/collection.dart';
 
+export 'paging/combined_load_state.dart';
+export 'paging/load_state.dart';
+export 'paging/load_states.dart';
+export 'paging/page_cache.dart';
+export 'paging/page_config.dart';
+export 'paging/pager_controller.dart';
+export 'paging/paging_data.dart';
+export 'paging/paging_source.dart';
+export 'paging/paging_state.dart';
+export 'paging/remote_mediator.dart';
 
 /// @author Paul Okeke
 /// A Paging Library
 
 typedef PagingBuilder<T> = Widget Function(BuildContext context, T value);
 
+/// A widget that renders paginated data from a [PagingSource] or an external
+/// [PagerController].
+///
+/// ## Basic usage (source only)
+/// ```dart
+/// Pager<int, MyItem>(
+///   source: myPagingSource,
+///   loadingBuilder: (_) => const CircularProgressIndicator(),
+///   emptyBuilder: (_) => const Text('No items'),
+///   builder: (context, data) => ListView.builder(
+///     itemCount: data.data.length,
+///     itemBuilder: (_, i) => ItemWidget(data.data[i]),
+///   ),
+/// )
+/// ```
+///
+/// ## Headless usage (controller outside widget tree)
+/// ```dart
+/// final controller = PagerController<int, MyItem>(source: mySource);
+/// controller.initialize();
+///
+/// // Access data anywhere
+/// print(controller.items);
+/// print(controller.totalItems);
+///
+/// // Pass to Pager for rendering
+/// Pager<int, MyItem>(
+///   controller: controller,
+///   builder: (context, data) => ...,
+/// )
+/// ```
 class Pager<K, T> extends StatefulWidget {
   const Pager({
     Key? key,
-    required this.source,
+    this.source,
+    this.controller,
     required this.builder,
     this.pagingConfig = const PagingConfig.fromDefault(),
     this.scrollController,
-    this.keepAlive = false
-  }) : super(key: key);
+    this.keepAlive = false,
+    this.loadingBuilder,
+    this.emptyBuilder,
+    this.appendLoadingBuilder,
+  })  : assert(
+          source != null || controller != null,
+          'Provide either a source or a controller.',
+        ),
+        super(key: key);
 
-  final PagingSource<K, T> source;
+  /// The data source. Required when [controller] is not provided.
+  final PagingSource<K, T>? source;
 
+  /// An external controller. When provided, [source] and [pagingConfig] are
+  /// ignored in favour of the controller's own configuration.
+  ///
+  /// The caller is responsible for calling [PagerController.initialize] and
+  /// [PagerController.dispose].
+  final PagerController<K, T>? controller;
+
+  /// Builds the main content. Receives the full [PagingData] including items,
+  /// load states, and [PagingData.totalItems].
   final PagingBuilder<PagingData<T>> builder;
 
   final PagingConfig pagingConfig;
 
+  /// An optional external [ScrollController]. Only used when the widget
+  /// returned by [builder] is not itself a [ScrollView].
   final ScrollController? scrollController;
 
   final bool keepAlive;
 
-  @override
-  State<StatefulWidget> createState() => _PagerState<K,T>();
+  /// Shown in place of [builder] while the first page is loading and there
+  /// is no cached data to display.
+  final WidgetBuilder? loadingBuilder;
 
+  /// Shown in place of [builder] when the loaded data is empty and not
+  /// loading.
+  final WidgetBuilder? emptyBuilder;
+
+  /// Shown below the content returned by [builder] while the next page is
+  /// being loaded. Wraps the builder output in a [Column] with an [Expanded]
+  /// child, so make sure your builder fills available space (e.g. a
+  /// [ListView]).
+  final WidgetBuilder? appendLoadingBuilder;
+
+  @override
+  State<StatefulWidget> createState() => _PagerState<K, T>();
 }
 
-class _PagerState<K, T> extends State<Pager<K, T>> with AutomaticKeepAliveClientMixin {
+class _PagerState<K, T> extends State<Pager<K, T>>
+    with AutomaticKeepAliveClientMixin {
+  /// The controller managed internally when no external controller is provided.
+  PagerController<K, T>? _internalController;
 
-  ///
-  final List<Page<K, T>> _pages = [];
-
-  ///
-  LoadStates _states = LoadStates.idle();
-
-  ///
-  PagingData<T> snapShot = PagingData([]);
-
-  /// Local Data state
-  LoadStates? sourceStates = LoadStates.idle();
-
-  /// Remote data state
-  LoadStates? mediatorStates = LoadStates.idle();
-
-  final lock = Lock();
-
-  /// The Current PagingData value. This value is what is passed
-  /// to the PagingBuilder when the data is updated/changes
-  late PagingData<T> value;
-
-  /// A ScrollController used basically to listen for scroll events
-  /// and to append more data when the scroll position hits
-  /// the prefetch distance
   ScrollController? _scrollController;
 
-  ///
-  int _totalNumberOfItems = 0;
-
-  /// Holds a subscription for each page fetched
-  final LinkedHashMap<K?, StreamSubscription<Page<K, T>>> _pageSubscriptions =
-  LinkedHashMap();
-
-  ///
-  PagingSource<K, T>? _pagingSource;
-
-  ///
-  RemoteMediator<K, dynamic>? _remoteMediator;
-
-  LoadParams<K> loadParams(LoadType loadType, K? key) {
-    return LoadParams(
-        loadType,
-        key,
-        (loadType == LoadType.REFRESH)
-            ? widget.pagingConfig.initialPageSize
-            : widget.pagingConfig.pageSize
-    );
-  }
-
-  @override
-  void initState() {
-    value = PagingData([]);
-    _pagingSource = widget.source;
-    _remoteMediator = _pagingSource?.remoteMediator;
-    super.initState();
-    _doInitialLoad();
-  }
+  PagerController<K, T> get _controller =>
+      widget.controller ?? _internalController!;
 
   @override
   bool get wantKeepAlive => widget.keepAlive;
 
-  List<T> transformPages() {
-    _totalNumberOfItems = 0;
-    return _pages.fold(<T>[], (List<T> previousValue, element) {
-      _totalNumberOfItems += getPageSize(element);
-      previousValue.addAll(transformGroupData(previousValue, element));
-      return previousValue;
-    });
-  }
-
-  List<T> transformGroupData(List<T> previousValue, Page<K, T> element) {
-    if (previousValue.lastOrNull is PageGroupData && element is PageGroup &&
-        element.data.firstOrNull is PageGroupData) {
-      final lastItemInPrevious = previousValue.lastOrNull as PageGroupData?;
-      final firstItemInElement = element.data.firstOrNull as PageGroupData?;
-      if (lastItemInPrevious?.key == firstItemInElement?.key) {
-        //TODO we can optimize
-        firstItemInElement?.items.forEach((item) {
-          if (lastItemInPrevious?.items.contains(item) == false) {
-            lastItemInPrevious?.items.add(item);
-          }
-        });
-        return List.empty();
-      }
-    }
-    return element.data;
-  }
-
-  _doInitialLoad() {
-    Future.microtask(() {
-      mediatorStates = mediatorStates?.modifyState(LoadType.REFRESH, Loading());
-      _requestRemoteLoad(LoadType.REFRESH);
-      _doLoad(LoadType.REFRESH);
-    });
-  }
-
-  _doLoad(LoadType loadType) async {
-    LoadParams<K> params;
-
-    await lock.synchronized(() async {
-      if (loadType == LoadType.REFRESH && _pages.isNotEmpty) {
-        await invalidate();
-      }
-
-      if (_pages.isEmpty || _pages.last.isEmpty()) {
-        params = loadParams(LoadType.REFRESH, null);
-      } else {
-        final nextKey = _pages.last.nextKey;
-        params = loadParams(loadType, nextKey);
-      }
-
-      switch (loadType) {
-        case LoadType.REFRESH:
-          sourceStates = sourceStates?.modifyState(loadType, Loading());
-          await _closeAllSubscriptions();
-          await _onRefresh(params);
-          break;
-        case LoadType.APPEND:
-          sourceStates = sourceStates?.modifyState(loadType, Loading());
-          await _onAppend(params);
-          break;
-        case LoadType.PREPEND:
-          onPrepend(params);
-          break;
-      }
-    });
-  }
-
-  int getPageSize(Page<K, T> page) {
-    if (page is PageGroup) {
-      return (page as PageGroup).originalDataSize;
-    }
-    return page.data.length;
-  }
-
-  ///This is triggered when we are reloading the page, e.g a new paging source
-  FutureOr<void> _onRefresh(LoadParams<K> params) async {
-    if (_pageSubscriptions.containsKey(params.key)) return;
-
-    dispatchUpdates();
-
-    final localSource = widget.source.localSource.call(params);
-    final subscription = localSource.listen((page) {
-
-      if (_pages.isNotEmpty) {
-        insertOrUpdate(page.prevKey, page);
-        return;
-      }
-
-      if (getPageSize(page) < widget.pagingConfig.initialPageSize) {
-        sourceStates = sourceStates
-            ?.modifyState(LoadType.REFRESH, NotLoading(true))
-            .modifyState(LoadType.APPEND, NotLoading(true))
-            .modifyState(LoadType.PREPEND, NotLoading(true));
-      } else {
-        sourceStates = sourceStates
-            ?.modifyState(LoadType.REFRESH, NotLoading(false))
-            .modifyState(LoadType.APPEND, NotLoading(true))
-            .modifyState(LoadType.PREPEND, NotLoading(true));
-      }
-
-      insertOrUpdate(page.prevKey, page);
-    });
-    _pageSubscriptions.putIfAbsent(params.key, () => subscription);
-  }
-
-  FutureOr<void> _onAppend(LoadParams<K> params) async {
-    final Completer completer = Completer();
-
-    if (_pageSubscriptions.containsKey(params.key)) {
-      return;
-    }
-
-    final localSource = widget.source.localSource.call(params);
-    StreamSubscription<Page<K, T>>? subscription;
-
-    subscription = localSource.listen((page) async {
-      if (_pages.isEmpty) {
-        subscription?.cancel();
-        _pageSubscriptions.remove(params.key);
-        return;
-      }
-
-      final newData = page.data;
-      final lastPage = _pages.last;
-
-      if (lastPage.nextKey != page.prevKey) {
-        insertOrUpdate(page.prevKey, page);
-        return;
-      }
-
-      final endOfPage = getPageSize(page) < widget.pagingConfig.pageSize;
-
-      sourceStates = sourceStates
-          ?.modifyState(LoadType.REFRESH, NotLoading(true))
-          .modifyState(LoadType.APPEND, NotLoading(endOfPage))
-          .modifyState(LoadType.PREPEND, NotLoading(true));
-
-      insertOrUpdate(page.prevKey, page);
-
-      //Pause and resume to avoid reading from local source while still computing
-      //The mediatorStates
-      if (newData.isEmpty || endOfPage) {
-        subscription?.pause();
-        await _requestRemoteLoad(LoadType.APPEND);
-        subscription?.resume();
-      }
-
-      if (!completer.isCompleted) completer.complete();
-    });
-    _pageSubscriptions.putIfAbsent(params.key, () => subscription!);
-    dispatchUpdates();
-    return completer.future;
-  }
-
-  onPrepend(LoadParams params) {
-
-  }
-
-  /// The next page key to fetch.
-  /// If the next key is null that would mean the last page
-  /// data isn't up to the [PagingConfig.pageSize] and thus the [Page.prevKey]
-  /// will be used instead
-  K? get _nextPageKey {
-    final lastPage = _pages.lastOrNull;
-    return lastPage?.nextKey ?? lastPage?.prevKey;
-  }
-
-  FutureOr<void> _requestRemoteLoad(LoadType loadType) async {
-    if (true == mediatorStates?.refresh.endOfPaginationReached ||
-        true == mediatorStates?.append.endOfPaginationReached ||
-        null == _remoteMediator) {
-      return;
-    }
-
-    mediatorStates = mediatorStates?.modifyState(loadType, Loading());
-
-    final result = await _remoteMediator?.load(
-        loadType, PagingState<K, T>(_nextPageKey, widget.pagingConfig)
-    );
-
-    if (result is MediatorSuccess) {
-      mediatorStates = mediatorStates?.modifyState(
-          loadType, NotLoading(result.endOfPaginationReached)
+  @override
+  void initState() {
+    super.initState();
+    if (widget.controller == null) {
+      _internalController = PagerController<K, T>(
+        source: widget.source!,
+        pagingConfig: widget.pagingConfig,
       );
-      _doLoad(loadType);
-    } else if (result is MediatorError) {
-      mediatorStates = mediatorStates?.modifyState(
-          loadType, Error(result.exception)
-      );
-      dispatchUpdates();
+      _internalController!.initialize();
     }
-  }
-
-  invalidate({bool dispatch = true}) async {
-    _pages.clear();
-    snapShot.data.clear();
-    if (dispatch) dispatchUpdates();
-    await _closeAllSubscriptions();
-  }
-
-  bool _calculateDiffAndUpdate(Page<K, T> oldPage, Page<K, T> newPage) {
-    final oldList = oldPage.data;
-    final newList = newPage.data;
-
-    ///Using The Myer's difference algorithm to find the difference
-    final dataDiffUpdates = calculateListDiff(oldList, newList)
-        .getUpdatesWithData();
-
-    final isSame = dataDiffUpdates.isEmpty;
-
-    if (!isSame) {
-      oldList.clear();
-      oldList.addAll(newList);
-      if (oldList.isEmpty) {
-        _pages.remove(oldPage);
-      }
-    }
-    return isSame;
-  }
-
-  insertOrUpdate(K? prevKey, Page<K, T> page) {
-    bool inserted = false;
-    if (null == prevKey) {
-      if (_pages.isEmpty) {
-        if (!page.isEmpty()) _pages.add(page);
-        inserted = true;
-      } else if(_pages.isNotEmpty) {
-        inserted = !_calculateDiffAndUpdate(_pages.first, page);
-      }
-    } else {
-      //this is a possible append or prepend
-      if (_pages.isEmpty) {
-        invalidate();
-        return;
-      }
-
-      //TODO: consider using an hashtable for faster look up in 0(1) time
-      final oldPage = _pages.firstWhereOrNull((element) {
-        return element.prevKey == prevKey;
-      });
-      //TODO: We should not be adding to this page if the previous page is not up to load size
-      if (null == oldPage && page.data.isNotEmpty) {
-        _pages.add(page);
-        inserted = true;
-      } else if (null != oldPage) {
-        inserted = !_calculateDiffAndUpdate(oldPage, page);
-      }
-    }
-    if (inserted) {
-      dispatchUpdates();
-    }
-  }
-
-  /// It's paramount that this ends before any other subscription is added
-  _closeAllSubscriptions() async {
-    if(_pageSubscriptions.isEmpty) return;
-    await Future.microtask(() async {
-      for (final subscription in _pageSubscriptions.entries) {
-        await subscription.value.cancel();
-      }
-      _pageSubscriptions.clear();
-    });
-  }
-
-  void dispatchUpdates() {
-    _states = _states.combineStates(sourceStates!, mediatorStates!);
-    final combinedStates = CombinedLoadStates(
-        _states.refresh, _states.append, _states.prepend,
-        source: sourceStates, mediator: mediatorStates);
-
-    final pages = transformPages();
-    final PagingData<T> event = PagingData(pages, loadStates: combinedStates);
-
-    if (mounted) {
-      setState(() {
-        value = event;
-      });
-      snapShot = event;
-    }
-  }
-
-  void _scrollListener() {
-    final prefetchDistance = widget.pagingConfig.preFetchDistance;
-    final currentScrollExtent = _scrollController?.position.pixels ?? 0;
-    final maxScrollExtent = _scrollController?.position.maxScrollExtent ?? 0;
-
-    final heightPerItem = maxScrollExtent / _totalNumberOfItems;
-    final scrollOffsetPerItem = currentScrollExtent / heightPerItem;
-
-
-    if ((_totalNumberOfItems - scrollOffsetPerItem) <= prefetchDistance) {
-      _doLoad(LoadType.APPEND);
-    }
-  }
-
-  void _registerScrollListener() {
-    final scrollController = _scrollController ?? widget.scrollController;
-    scrollController?.removeListener(_scrollListener);
-    scrollController?.addListener(_scrollListener);
-  }
-
-  Future<void> resetPager() async {
-    _states = LoadStates.idle();
-    sourceStates = LoadStates.idle();
-    mediatorStates = LoadStates.idle();
-    _pagingSource = widget.source;
-    _remoteMediator = widget.source.remoteMediator;
-    await invalidate(dispatch: false);
   }
 
   @override
   void didUpdateWidget(covariant Pager<K, T> oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.source != oldWidget.source) {
-      resetPager().then((value) {
-        _doInitialLoad();
-      });
+    // Source changed and we own the controller — recreate it
+    if (widget.controller == null && widget.source != oldWidget.source) {
+      _internalController?.dispose();
+      _internalController = PagerController<K, T>(
+        source: widget.source!,
+        pagingConfig: widget.pagingConfig,
+      );
+      _internalController!.initialize();
     }
+  }
+
+  void _scrollListener() {
+    final ctrl = _scrollController ?? widget.scrollController;
+    if (ctrl == null) return;
+    _controller.onScrollPositionChanged(
+      ctrl.position.pixels,
+      ctrl.position.maxScrollExtent,
+    );
+  }
+
+  void _registerScrollListener(ScrollController? ctrl) {
+    ctrl?.removeListener(_scrollListener);
+    ctrl?.addListener(_scrollListener);
   }
 
   @override
   Widget build(BuildContext context) {
-    if (wantKeepAlive) {
-      super.build(context);
-    }
-    Widget builder = widget.builder(context, value);
-    if (builder is ScrollView) {
-      _scrollController = builder.controller;
-    } else {
-      _scrollController = widget.scrollController;
-    }
-    _registerScrollListener();
-    return builder;
+    if (wantKeepAlive) super.build(context);
+
+    return ValueListenableBuilder<PagingData<T>>(
+      valueListenable: _controller,
+      builder: (context, pagingData, _) {
+        // Initial loading — show placeholder if no data yet
+        if (pagingData.isLoading &&
+            pagingData.data.isEmpty &&
+            widget.loadingBuilder != null) {
+          return widget.loadingBuilder!(context);
+        }
+
+        // Empty state
+        if (pagingData.isEmpty && widget.emptyBuilder != null) {
+          return widget.emptyBuilder!(context);
+        }
+
+        final content = widget.builder(context, pagingData);
+
+        // Detect scroll controller from the built widget
+        if (content is ScrollView) {
+          _scrollController = content.controller;
+        } else {
+          _scrollController = widget.scrollController;
+        }
+        _registerScrollListener(_scrollController ?? widget.scrollController);
+
+        // Append loading indicator
+        if (pagingData.isAppending && widget.appendLoadingBuilder != null) {
+          return Column(
+            children: [
+              Expanded(child: content),
+              widget.appendLoadingBuilder!(context),
+            ],
+          );
+        }
+
+        return content;
+      },
+    );
   }
 
   @override
   void dispose() {
-    invalidate(dispatch: false);
+    _internalController?.dispose();
     super.dispose();
   }
-
 }
