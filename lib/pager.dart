@@ -79,7 +79,6 @@ class Pager<K, T> extends StatefulWidget {
     required this.source,
     required this.builder,
     this.pagingConfig = const PagingConfig.fromDefault(),
-    this.scrollController,
     this.keepAlive = false,
   })  : controller = null,
         super(key: key);
@@ -96,7 +95,6 @@ class Pager<K, T> extends StatefulWidget {
   })  : controller = controller,
         source = PagingSource.empty(),
         pagingConfig = const PagingConfig.fromDefault(),
-        scrollController = null,
         super(key: key);
 
   /// The data source. Always non-null when using the default constructor.
@@ -116,10 +114,6 @@ class Pager<K, T> extends StatefulWidget {
 
   final PagingConfig pagingConfig;
 
-  /// An optional external [ScrollController]. Only used when the widget
-  /// returned by [builder] is not itself a [ScrollView].
-  final ScrollController? scrollController;
-
   final bool keepAlive;
 
   @override
@@ -128,10 +122,7 @@ class Pager<K, T> extends StatefulWidget {
 
 class _PagerState<K, T> extends State<Pager<K, T>>
     with AutomaticKeepAliveClientMixin {
-  /// The controller managed internally when no external controller is provided.
   PagerController<K, T>? _internalController;
-
-  ScrollController? _scrollController;
 
   PagerController<K, T> get _controller =>
       widget.controller ?? _internalController!;
@@ -154,7 +145,6 @@ class _PagerState<K, T> extends State<Pager<K, T>>
   @override
   void didUpdateWidget(covariant Pager<K, T> oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Source changed and we own the controller — recreate it
     if (widget.controller == null && widget.source != oldWidget.source) {
       _internalController?.dispose();
       _internalController = PagerController<K, T>(
@@ -165,39 +155,27 @@ class _PagerState<K, T> extends State<Pager<K, T>>
     }
   }
 
-  void _scrollListener() {
-    final ctrl = _scrollController ?? widget.scrollController;
-    if (ctrl == null) return;
-    _controller.onScrollPositionChanged(
-      ctrl.position.pixels,
-      ctrl.position.maxScrollExtent,
-    );
-  }
-
-  void _registerScrollListener(ScrollController? ctrl) {
-    ctrl?.removeListener(_scrollListener);
-    ctrl?.addListener(_scrollListener);
+  bool _onScroll(ScrollNotification notification) {
+    final metrics = notification.metrics;
+    if (metrics.axis == Axis.vertical) {
+      _controller.onScrollPositionChanged(
+        metrics.pixels,
+        metrics.maxScrollExtent,
+      );
+    }
+    return false;
   }
 
   @override
   Widget build(BuildContext context) {
     if (wantKeepAlive) super.build(context);
 
-    return ValueListenableBuilder<PagingData<T>>(
-      valueListenable: _controller,
-      builder: (context, pagingData, _) {
-        final content = widget.builder(context, pagingData);
-
-        // Detect scroll controller from the built widget
-        if (content is ScrollView) {
-          _scrollController = content.controller;
-        } else {
-          _scrollController = widget.scrollController;
-        }
-        _registerScrollListener(_scrollController ?? widget.scrollController);
-
-        return content;
-      },
+    return NotificationListener<ScrollNotification>(
+      onNotification: _onScroll,
+      child: ValueListenableBuilder<PagingData<T>>(
+        valueListenable: _controller,
+        builder: (context, pagingData, _) => widget.builder(context, pagingData),
+      ),
     );
   }
 
