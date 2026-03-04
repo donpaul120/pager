@@ -80,6 +80,13 @@ class Pager<K, T> extends StatefulWidget {
     required this.builder,
     this.pagingConfig = const PagingConfig.fromDefault(),
     this.keepAlive = false,
+    @Deprecated(
+      'scrollController is no longer needed. Pager now uses NotificationListener '
+      'to detect scroll position, which works with any ScrollView regardless of '
+      'whether it has an explicit ScrollController. You can safely remove this parameter.',
+    )
+    // ignore: avoid_init_to_null
+    ScrollController? scrollController = null,
   })  : controller = null,
         super(key: key);
 
@@ -92,6 +99,13 @@ class Pager<K, T> extends StatefulWidget {
     required PagerController<K, T> controller,
     required this.builder,
     this.keepAlive = false,
+    @Deprecated(
+      'scrollController is no longer needed. Pager now uses NotificationListener '
+      'to detect scroll position, which works with any ScrollView regardless of '
+      'whether it has an explicit ScrollController. You can safely remove this parameter.',
+    )
+    // ignore: avoid_init_to_null
+    ScrollController? scrollController = null,
   })  : controller = controller,
         source = PagingSource.empty(),
         pagingConfig = const PagingConfig.fromDefault(),
