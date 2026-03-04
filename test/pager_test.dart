@@ -80,16 +80,16 @@ void main() {
     expect(lastData?.data, isNotNull);
   });
 
-  testWidgets('loadingBuilder is shown during initial load', (tester) async {
+  testWidgets('PagingDataViewDisplayDelegate shows loading during initial load',
+      (tester) async {
     // Use a stream that never emits to keep it in loading state
     final source = PagingSource<int, String>(
         localSource: (a) => const Stream.empty());
 
     await tester.pumpWidget(MaterialApp(
-      home: Pager(
+      home: Pager<int, String>(
           source: source,
-          loadingBuilder: (_) => const Text('loading...'),
-          builder: (ctx, d) => const SizedBox()),
+          builder: (ctx, d) => _DelegateTestWidget(data: d)),
     ));
 
     await tester.pump();
@@ -132,4 +132,19 @@ void main() {
     expect(controller.items.length, 2);
     controller.dispose();
   });
+}
+
+class _DelegateTestWidget extends StatelessWidget
+    with PagingDataViewDisplayDelegate {
+  final PagingData<String> data;
+  const _DelegateTestWidget({required this.data});
+
+  @override
+  Widget build(BuildContext context) {
+    return renderOnlyWhenRemoteIsUpdated(
+      data: data,
+      loadingView: const Text('loading...'),
+      successView: (items) => const SizedBox(),
+    );
+  }
 }

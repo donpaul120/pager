@@ -2,16 +2,10 @@ library pager;
 
 import 'package:flutter/widgets.dart' hide Page;
 
-import 'paging/combined_load_state.dart';
-import 'paging/load_state.dart';
-import 'paging/load_states.dart';
-import 'paging/page_cache.dart';
 import 'paging/page_config.dart';
 import 'paging/pager_controller.dart';
 import 'paging/paging_data.dart';
 import 'paging/paging_source.dart';
-import 'paging/paging_state.dart';
-import 'paging/remote_mediator.dart';
 
 export 'paging/combined_load_state.dart';
 export 'paging/load_state.dart';
@@ -20,6 +14,7 @@ export 'paging/page_cache.dart';
 export 'paging/page_config.dart';
 export 'paging/pager_controller.dart';
 export 'paging/paging_data.dart';
+export 'paging/paging_data_view_display_delegate.dart';
 export 'paging/paging_source.dart';
 export 'paging/paging_state.dart';
 export 'paging/remote_mediator.dart';
@@ -31,20 +26,32 @@ typedef PagingBuilder<T> = Widget Function(BuildContext context, T value);
 
 /// A widget that renders paginated data from a [PagingSource].
 ///
+/// The [builder] callback receives the full [PagingData] (items + load states).
+/// Use [PagingDataViewDisplayDelegate] in your widget to handle loading, empty,
+/// and error states based on the [PagingData] provided.
+///
 /// To use an external [PagerController] (e.g. for headless access to data),
 /// use the [Pager.withController] named constructor instead.
 ///
 /// ## Basic usage
 /// ```dart
-/// Pager<int, MyItem>(
-///   source: myPagingSource,
-///   loadingBuilder: (_) => const CircularProgressIndicator(),
-///   emptyBuilder: (_) => const Text('No items'),
-///   builder: (context, data) => ListView.builder(
-///     itemCount: data.data.length,
-///     itemBuilder: (_, i) => ItemWidget(data.data[i]),
-///   ),
-/// )
+/// class MyListView extends StatelessWidget with PagingDataViewDisplayDelegate {
+///   @override
+///   Widget build(BuildContext context) {
+///     return Pager<int, MyItem>(
+///       source: myPagingSource,
+///       builder: (context, data) => renderOnlyWhenRemoteIsUpdated(
+///         data: data,
+///         loadingView: const CircularProgressIndicator(),
+///         emptyView: () => const Text('No items'),
+///         successView: (items) => ListView.builder(
+///           itemCount: items.length,
+///           itemBuilder: (_, i) => ItemWidget(items[i]),
+///         ),
+///       ),
+///     );
+///   }
+/// }
 /// ```
 ///
 /// ## Headless / external-controller usage
@@ -74,9 +81,6 @@ class Pager<K, T> extends StatefulWidget {
     this.pagingConfig = const PagingConfig.fromDefault(),
     this.scrollController,
     this.keepAlive = false,
-    this.loadingBuilder,
-    this.emptyBuilder,
-    this.appendLoadingBuilder,
   })  : controller = null,
         super(key: key);
 
@@ -89,9 +93,6 @@ class Pager<K, T> extends StatefulWidget {
     required PagerController<K, T> controller,
     required this.builder,
     this.keepAlive = false,
-    this.loadingBuilder,
-    this.emptyBuilder,
-    this.appendLoadingBuilder,
   })  : controller = controller,
         source = PagingSource.empty(),
         pagingConfig = const PagingConfig.fromDefault(),
@@ -109,6 +110,8 @@ class Pager<K, T> extends StatefulWidget {
 
   /// Builds the main content. Receives the full [PagingData] including items,
   /// load states, and [PagingData.totalItems].
+  ///
+  /// Use [PagingDataViewDisplayDelegate] to handle loading/empty/error states.
   final PagingBuilder<PagingData<T>> builder;
 
   final PagingConfig pagingConfig;
@@ -118,19 +121,6 @@ class Pager<K, T> extends StatefulWidget {
   final ScrollController? scrollController;
 
   final bool keepAlive;
-
-  /// Shown in place of [builder] while the first page is loading and there
-  /// is no cached data to display.
-  final WidgetBuilder? loadingBuilder;
-
-  /// Shown in place of [builder] when the loaded data is empty and not
-  /// loading.
-  final WidgetBuilder? emptyBuilder;
-
-  /// Shown below the content returned by [builder] while the next page is
-  /// being loaded. Wraps the builder output in a [Column] with an [Expanded]
-  /// child, so ensure your builder fills available space (e.g. a [ListView]).
-  final WidgetBuilder? appendLoadingBuilder;
 
   @override
   State<StatefulWidget> createState() => _PagerState<K, T>();
@@ -196,18 +186,6 @@ class _PagerState<K, T> extends State<Pager<K, T>>
     return ValueListenableBuilder<PagingData<T>>(
       valueListenable: _controller,
       builder: (context, pagingData, _) {
-        // Initial loading — show placeholder if no data yet
-        if (pagingData.isLoading &&
-            pagingData.data.isEmpty &&
-            widget.loadingBuilder != null) {
-          return widget.loadingBuilder!(context);
-        }
-
-        // Empty state
-        if (pagingData.isEmpty && widget.emptyBuilder != null) {
-          return widget.emptyBuilder!(context);
-        }
-
         final content = widget.builder(context, pagingData);
 
         // Detect scroll controller from the built widget
@@ -217,16 +195,6 @@ class _PagerState<K, T> extends State<Pager<K, T>>
           _scrollController = widget.scrollController;
         }
         _registerScrollListener(_scrollController ?? widget.scrollController);
-
-        // Append loading indicator
-        if (pagingData.isAppending && widget.appendLoadingBuilder != null) {
-          return Column(
-            children: [
-              Expanded(child: content),
-              widget.appendLoadingBuilder!(context),
-            ],
-          );
-        }
 
         return content;
       },

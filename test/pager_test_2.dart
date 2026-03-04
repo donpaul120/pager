@@ -3,16 +3,16 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pager/pager.dart';
 
 void main() {
-  testWidgets('emptyBuilder is shown when source emits an empty page',
+  testWidgets(
+      'PagingDataViewDisplayDelegate shows empty when source emits an empty page',
       (tester) async {
     final source = PagingSource<int, String>(
         localSource: (a) => Stream.value(Page([], null, null)));
 
     await tester.pumpWidget(MaterialApp(
-      home: Pager(
+      home: Pager<int, String>(
           source: source,
-          emptyBuilder: (_) => const Text('empty'),
-          builder: (ctx, d) => const SizedBox()),
+          builder: (ctx, d) => _EmptyDelegateTestWidget(data: d)),
     ));
 
     // Allow microtasks and stream events to settle
@@ -117,4 +117,19 @@ void main() {
 class _TestGroup extends PageGroupData<String, String> {
   _TestGroup({required String key, required List<String> items})
       : super(key: key, items: items);
+}
+
+class _EmptyDelegateTestWidget extends StatelessWidget
+    with PagingDataViewDisplayDelegate {
+  final PagingData<String> data;
+  const _EmptyDelegateTestWidget({required this.data});
+
+  @override
+  Widget build(BuildContext context) {
+    return renderOnlyWhenRemoteIsUpdated(
+      data: data,
+      emptyView: () => const Text('empty'),
+      successView: (items) => const SizedBox(),
+    );
+  }
 }
