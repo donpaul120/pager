@@ -29,10 +29,12 @@ export 'paging/remote_mediator.dart';
 
 typedef PagingBuilder<T> = Widget Function(BuildContext context, T value);
 
-/// A widget that renders paginated data from a [PagingSource] or an external
-/// [PagerController].
+/// A widget that renders paginated data from a [PagingSource].
 ///
-/// ## Basic usage (source only)
+/// To use an external [PagerController] (e.g. for headless access to data),
+/// use the [Pager.withController] named constructor instead.
+///
+/// ## Basic usage
 /// ```dart
 /// Pager<int, MyItem>(
 ///   source: myPagingSource,
@@ -45,26 +47,29 @@ typedef PagingBuilder<T> = Widget Function(BuildContext context, T value);
 /// )
 /// ```
 ///
-/// ## Headless usage (controller outside widget tree)
+/// ## Headless / external-controller usage
 /// ```dart
 /// final controller = PagerController<int, MyItem>(source: mySource);
 /// controller.initialize();
 ///
-/// // Access data anywhere
+/// // Access data anywhere without a widget
 /// print(controller.items);
 /// print(controller.totalItems);
 ///
-/// // Pass to Pager for rendering
-/// Pager<int, MyItem>(
+/// // Render it
+/// Pager.withController(
 ///   controller: controller,
 ///   builder: (context, data) => ...,
 /// )
 /// ```
 class Pager<K, T> extends StatefulWidget {
+  /// Creates a [Pager] driven by a [PagingSource].
+  ///
+  /// The widget manages its own internal [PagerController] and disposes it
+  /// automatically. For external controller management use [Pager.withController].
   const Pager({
     Key? key,
-    this.source,
-    this.controller,
+    required this.source,
     required this.builder,
     this.pagingConfig = const PagingConfig.fromDefault(),
     this.scrollController,
@@ -72,20 +77,34 @@ class Pager<K, T> extends StatefulWidget {
     this.loadingBuilder,
     this.emptyBuilder,
     this.appendLoadingBuilder,
-  })  : assert(
-          source != null || controller != null,
-          'Provide either a source or a controller.',
-        ),
+  })  : controller = null,
         super(key: key);
 
-  /// The data source. Required when [controller] is not provided.
-  final PagingSource<K, T>? source;
-
-  /// An external controller. When provided, [source] and [pagingConfig] are
-  /// ignored in favour of the controller's own configuration.
+  /// Creates a [Pager] driven by an external [PagerController].
   ///
   /// The caller is responsible for calling [PagerController.initialize] and
-  /// [PagerController.dispose].
+  /// [PagerController.dispose] on the controller.
+  Pager.withController({
+    Key? key,
+    required PagerController<K, T> controller,
+    required this.builder,
+    this.keepAlive = false,
+    this.loadingBuilder,
+    this.emptyBuilder,
+    this.appendLoadingBuilder,
+  })  : controller = controller,
+        source = PagingSource.empty(),
+        pagingConfig = const PagingConfig.fromDefault(),
+        scrollController = null,
+        super(key: key);
+
+  /// The data source. Always non-null when using the default constructor.
+  final PagingSource<K, T> source;
+
+  /// An external controller. Only set when using [Pager.withController].
+  ///
+  /// When non-null, [source] and [pagingConfig] are ignored in favour of the
+  /// controller's own configuration.
   final PagerController<K, T>? controller;
 
   /// Builds the main content. Receives the full [PagingData] including items,
@@ -110,8 +129,7 @@ class Pager<K, T> extends StatefulWidget {
 
   /// Shown below the content returned by [builder] while the next page is
   /// being loaded. Wraps the builder output in a [Column] with an [Expanded]
-  /// child, so make sure your builder fills available space (e.g. a
-  /// [ListView]).
+  /// child, so ensure your builder fills available space (e.g. a [ListView]).
   final WidgetBuilder? appendLoadingBuilder;
 
   @override
@@ -136,7 +154,7 @@ class _PagerState<K, T> extends State<Pager<K, T>>
     super.initState();
     if (widget.controller == null) {
       _internalController = PagerController<K, T>(
-        source: widget.source!,
+        source: widget.source,
         pagingConfig: widget.pagingConfig,
       );
       _internalController!.initialize();
@@ -150,7 +168,7 @@ class _PagerState<K, T> extends State<Pager<K, T>>
     if (widget.controller == null && widget.source != oldWidget.source) {
       _internalController?.dispose();
       _internalController = PagerController<K, T>(
-        source: widget.source!,
+        source: widget.source,
         pagingConfig: widget.pagingConfig,
       );
       _internalController!.initialize();

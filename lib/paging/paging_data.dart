@@ -3,7 +3,8 @@ import 'load_state.dart';
 import 'load_states.dart';
 
 class PagingData<T> {
-  PagingData(this.data, {this.totalItems = 0, this.loadStates});
+  PagingData(this.data, {this.totalItems = 0, this.loadStates, List<T>? oldList})
+      : oldList = oldList;
 
   final List<T> data;
 
@@ -12,6 +13,11 @@ class PagingData<T> {
   final int totalItems;
 
   final CombinedLoadStates? loadStates;
+
+  /// Deprecated. Was intended for diff purposes but is no longer used
+  /// internally. Kept for backward compatibility only.
+  @Deprecated('oldList is no longer used. Use data directly.')
+  final List<T>? oldList;
 
   /// True while the initial/refresh load is in progress.
   bool get isLoading => loadStates?.refresh is Loading;
@@ -47,4 +53,13 @@ class Page<Key, Value> {
   final Key? nextKey;
 
   bool isEmpty() => data.isEmpty;
+
+  /// Deprecated. The implementation was incorrect (hardcoded states).
+  /// Kept for backward compatibility only.
+  @Deprecated('toPagingData is no longer supported. Use PagingData directly.')
+  PagingData<Value> toPagingData(LoadStates states) {
+    return PagingData(data,
+        loadStates: CombinedLoadStates(
+            LoadState(true), LoadState(true), LoadState(true)));
+  }
 }

@@ -105,10 +105,31 @@ void main() {
     final controller = PagerController<int, String>(source: source);
     controller.initialize();
 
-    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump();
+    await tester.pump();
 
     // Data is accessible directly without a widget tree
     expect(controller.totalItems, isNonNegative);
+    controller.dispose();
+  });
+
+  testWidgets('Pager.withController renders from external controller',
+      (tester) async {
+    final source = PagingSource<int, String>(
+        localSource: (a) =>
+            Stream.fromIterable([Page(['X', 'Y'], null, 1)]));
+
+    final controller = PagerController<int, String>(source: source);
+    controller.initialize();
+
+    await tester.pumpWidget(Pager.withController(
+        controller: controller,
+        builder: (ctx, d) => const SizedBox()));
+
+    await tester.pump();
+    await tester.pump();
+
+    expect(controller.items.length, 2);
     controller.dispose();
   });
 }
