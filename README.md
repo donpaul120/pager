@@ -302,18 +302,18 @@ class _TransactionsPageState extends State<TransactionsPage> {
 }
 ```
 
-> When you pass a `controller` to the default constructor, Pager uses it but does **not** call `initialize()` or `dispose()` — that is your responsibility.
+> When you pass a `controller` to the default constructor, Pager will start it automatically if it hasn't been initialized yet. If the controller already has data or is mid-load, the widget leaves it untouched and immediately renders the existing state. You are always responsible for calling `dispose()`.
 
 ### Headless — data without a visible Pager widget
 
-Use `Pager.withController` when the controller is owned by a ViewModel or bloc and was already initialized before the widget mounted:
+Use `Pager.withController` when the controller is owned by a ViewModel or bloc. You can pre-initialize it before the widget is visible and the widget will pick up the existing data without re-fetching:
 
 ```dart
-// In your ViewModel or bloc (outside the widget tree):
+// In your ViewModel or bloc — start fetching before the screen is shown:
 final controller = PagerController<int, Transaction>(source: mySource);
-controller.initialize();
+controller.initialize(); // fetching begins immediately
 
-// In your widget:
+// Later, when the widget mounts (even if data is already loaded):
 Pager.withController(
   controller: controller,
   builder: (context, data) => ListView.builder(
@@ -321,7 +321,28 @@ Pager.withController(
     itemBuilder: (_, i) => TransactionTile(data.data[i]),
   ),
 )
+// ↑ Pager sees the controller already has data and renders it directly.
+//   No refresh, no duplicate load.
 ```
+
+You can also pass a fresh (not yet started) controller and the widget will initialize it for you:
+
+```dart
+final controller = PagerController<int, Transaction>(source: mySource);
+// No initialize() call needed — Pager.withController starts it on mount.
+
+Pager.withController(controller: controller, builder: ...)
+```
+
+**Initialization rules for external controllers:**
+
+| Controller state when widget mounts | What Pager does |
+|---|---|
+| Never started (`loadStates == null`) | Calls `initialize()` automatically |
+| Has data / mid-load / errored | Renders existing state — no re-fetch |
+| Controller instance swapped via rebuild | Initializes the new one only if it hasn't started |
+
+> You are always responsible for calling `controller.dispose()` — Pager never disposes an externally provided controller.
 
 ### Inside a CustomScrollView
 
