@@ -26,7 +26,9 @@ typedef PagingBuilder<T> = Widget Function(BuildContext context, T value);
 ///
 /// The [builder] callback receives the full [PagingData] (items + load states).
 ///
-/// ## Basic usage
+/// ---
+///
+/// ## Simple usage — Pager manages everything internally
 /// ```dart
 /// Pager<int, MyItem>(
 ///   source: myPagingSource,
@@ -34,66 +36,110 @@ typedef PagingBuilder<T> = Widget Function(BuildContext context, T value);
 ///     if (data.isLoading) return const CircularProgressIndicator();
 ///     if (data.isEmpty)   return const Text('No items');
 ///     return ListView.builder(
-///       itemCount: data.data.length,
+///       itemCount: data.itemCount,
 ///       itemBuilder: (_, i) => ItemWidget(data.data[i]),
 ///     );
 ///   },
 /// )
 /// ```
 ///
-/// ## Headless / external-controller usage
+/// ## With an external controller — access data outside the builder
+///
+/// Pass a [PagerController] to get a handle on the controller outside the
+/// widget tree (e.g. to read [PagerController.totalItems] in an app bar or
+/// badge). The Pager still drives the data source; you manage the controller
+/// lifecycle.
+///
+/// ```dart
+/// class _MyPageState extends State<MyPage> {
+///   late final _controller = PagerController<int, MyItem>(source: mySource);
+///
+///   @override
+///   void dispose() {
+///     _controller.dispose();
+///     super.dispose();
+///   }
+///
+///   @override
+///   Widget build(BuildContext context) {
+///     return Column(
+///       children: [
+///         // Access totalItems, isLoading, etc. anywhere:
+///         ValueListenableBuilder(
+///           valueListenable: _controller,
+///           builder: (_, data, __) => Text('${data.totalItems} items'),
+///         ),
+///         Expanded(
+///           child: Pager<int, MyItem>(
+///             source: mySource,
+///             controller: _controller, // ← pass it here
+///             builder: (context, data) => ListView.builder(...),
+///           ),
+///         ),
+///       ],
+///     );
+///   }
+/// }
+/// ```
+///
+/// ## Headless — data without a visible Pager widget
+///
+/// Use [Pager.withController] when the controller was created and initialised
+/// independently (e.g. in a ViewModel or bloc) before the widget is mounted.
+///
 /// ```dart
 /// final controller = PagerController<int, MyItem>(source: mySource);
 /// controller.initialize();
 ///
-/// // Access data anywhere without a widget:
-/// print(controller.totalItems);
-/// print(controller.items);
-///
-/// // Render it when ready:
-/// Pager.withController(
-///   controller: controller,
-///   builder: (context, data) => ...,
-/// )
+/// // Later:
+/// Pager.withController(controller: controller, builder: (ctx, data) => ...);
 /// ```
 class Pager<K, T> extends StatefulWidget {
   /// Creates a [Pager] driven by a [PagingSource].
   ///
-  /// The widget manages its own internal [PagerController] and disposes it
-  /// automatically. For externally managed controllers use [Pager.withController].
+  /// If [controller] is omitted the widget creates and disposes its own
+  /// internal [PagerController] automatically.
+  ///
+  /// Pass an explicit [controller] when you need to read pagination state
+  /// (e.g. [PagerController.totalItems]) outside of the [builder] callback.
+  /// In that case you are responsible for calling [PagerController.dispose].
   const Pager({
     Key? key,
     required this.source,
     required this.builder,
+    this.controller,
     this.pagingConfig = const PagingConfig.fromDefault(),
     this.keepAlive = false,
-    // Kept for backward compatibility — scroll detection now uses
-    // NotificationListener and no longer requires an explicit ScrollController.
     this.scrollController,
-  })  : _controller = null,
-        super(key: key);
+  }) : super(key: key);
 
-  /// Creates a [Pager] driven by an externally managed [PagerController].
+  /// Creates a [Pager] driven by an already-initialised [PagerController].
   ///
-  /// The caller is responsible for calling [PagerController.initialize] before
-  /// passing the controller here, and for calling [PagerController.dispose]
-  /// when done.
+  /// Use this when the controller is owned by a ViewModel, bloc, or any object
+  /// that lives outside the widget tree. The caller is responsible for calling
+  /// [PagerController.initialize] and [PagerController.dispose].
   Pager.withController({
     Key? key,
     required PagerController<K, T> controller,
     required this.builder,
     this.keepAlive = false,
-  })  : _controller = controller,
+    this.scrollController,
+  })  : controller = controller, // ignore: prefer_initializing_formals
         source = PagingSource.empty(),
         pagingConfig = const PagingConfig.fromDefault(),
-        scrollController = null,
         super(key: key);
 
+  /// The data source. Used when no external [controller] is provided.
   final PagingSource<K, T> source;
 
-  /// An externally managed controller. When non-null, [source] and
-  /// [pagingConfig] are ignored.
-  final PagerController<K, T>? _controller;
+  /// An optional external controller.
+  ///
+  /// - When provided via the default constructor, Pager uses it to drive data
+  ///   but does **not** call [PagerController.initialize] or
+  ///   [PagerController.dispose] — that is the caller's responsibility.
+  /// - When provided via [Pager.withController], same rules apply.
+  /// - When `null`, Pager creates an internal controller automatically.
+  final PagerController<K, T>? controller;
 
   final PagingBuilder<PagingData<T>> builder;
 
@@ -121,7 +167,7 @@ class Pager<K, T> extends StatefulWidget {
   ///     SliverToBoxAdapter(
   ///       child: Pager(
   ///         source: source,
-  ///         scrollController: _scrollController, // ← pass it here
+  ///         scrollController: _scrollController,
   ///         builder: (ctx, data) => ...,
   ///       ),
   ///     ),
@@ -136,10 +182,12 @@ class Pager<K, T> extends StatefulWidget {
 
 class _PagerState<K, T> extends State<Pager<K, T>>
     with AutomaticKeepAliveClientMixin {
+  /// Created only when no external controller is provided.
   PagerController<K, T>? _internalController;
 
+  /// The active controller — external if provided, otherwise internal.
   PagerController<K, T> get _controller =>
-      widget._controller ?? _internalController!;
+      widget.controller ?? _internalController!;
 
   @override
   bool get wantKeepAlive => widget.keepAlive;
@@ -147,20 +195,26 @@ class _PagerState<K, T> extends State<Pager<K, T>>
   @override
   void initState() {
     super.initState();
-    if (widget._controller == null) {
+    _initController();
+    _attachScrollController(widget.scrollController);
+  }
+
+  void _initController() {
+    if (widget.controller == null) {
       _internalController = PagerController<K, T>(
         source: widget.source,
         pagingConfig: widget.pagingConfig,
       );
       _internalController!.initialize();
     }
-    _attachScrollController(widget.scrollController);
   }
 
   @override
   void didUpdateWidget(covariant Pager<K, T> oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget._controller == null && widget.source != oldWidget.source) {
+
+    // If no external controller and the source changed, recreate internally.
+    if (widget.controller == null && widget.source != oldWidget.source) {
       _internalController?.dispose();
       _internalController = PagerController<K, T>(
         source: widget.source,
@@ -168,6 +222,7 @@ class _PagerState<K, T> extends State<Pager<K, T>>
       );
       _internalController!.initialize();
     }
+
     if (widget.scrollController != oldWidget.scrollController) {
       oldWidget.scrollController?.removeListener(_onScrollControllerUpdate);
       _attachScrollController(widget.scrollController);
@@ -215,6 +270,7 @@ class _PagerState<K, T> extends State<Pager<K, T>>
   @override
   void dispose() {
     widget.scrollController?.removeListener(_onScrollControllerUpdate);
+    // Only dispose the controller we created ourselves.
     _internalController?.dispose();
     super.dispose();
   }

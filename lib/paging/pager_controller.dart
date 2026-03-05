@@ -51,6 +51,7 @@ class PagerController<K, T> extends ValueNotifier<PagingData<T>> {
       LinkedHashMap();
 
   int _totalItems = 0;
+  int? _mediatorTotalItems;
   bool _disposed = false;
 
   // Set synchronously before the lock is acquired so that concurrent scroll
@@ -67,8 +68,35 @@ class PagerController<K, T> extends ValueNotifier<PagingData<T>> {
   /// Flat list of currently loaded items.
   List<T> get items => value.data;
 
+  /// Number of items currently loaded. Equivalent to [items].length.
+  int get itemCount => value.itemCount;
+
   /// Current combined load states.
   CombinedLoadStates? get loadStates => value.loadStates;
+
+  /// True while the initial/refresh load is in progress.
+  bool get isLoading => value.isLoading;
+
+  /// True when there is no data and no refresh is in progress.
+  bool get isEmpty => value.isEmpty;
+
+  /// True when data is present.
+  bool get isNotEmpty => value.isNotEmpty;
+
+  /// True while the next page is being loaded.
+  bool get isAppending => value.isAppending;
+
+  /// True when all pages have been loaded and there is no more data to fetch.
+  bool get endOfPaginationReached => value.endOfPaginationReached;
+
+  /// True if either the refresh or append load has failed.
+  bool get hasError => value.hasError;
+
+  /// The exception from the most recent failed refresh, or null.
+  Exception? get refreshError => value.refreshError;
+
+  /// The exception from the most recent failed append, or null.
+  Exception? get appendError => value.appendError;
 
   /// Starts the initial data load. Must be called once after construction.
   ///
@@ -333,6 +361,7 @@ class PagerController<K, T> extends ValueNotifier<PagingData<T>> {
     if (result is MediatorSuccess) {
       _mediatorStates = _mediatorStates.modifyState(
           loadType, NotLoading(result.endOfPaginationReached));
+      if (result.totalItems != null) _mediatorTotalItems = result.totalItems;
     } else if (result is MediatorError) {
       _mediatorStates =
           _mediatorStates.modifyState(loadType, Error(result.exception));
@@ -345,6 +374,7 @@ class PagerController<K, T> extends ValueNotifier<PagingData<T>> {
   Future<void> _invalidate({bool dispatch = true}) async {
     _pages.clear();
     _pageIndex.clear();
+    _mediatorTotalItems = null;
     if (dispatch) dispatchUpdates();
     await _closeAllSubscriptions();
   }
@@ -429,11 +459,20 @@ class PagerController<K, T> extends ValueNotifier<PagingData<T>> {
 
   List<T> _transformPages() {
     _totalItems = 0;
-    return _pages.fold(<T>[], (prev, element) {
+    int? serverTotal;
+    final List<T> result = _pages.fold(<T>[], (prev, element) {
       _totalItems += _getPageSize(element);
+      if (element.totalItems != null) serverTotal = element.totalItems;
       prev.addAll(_transformGroupData(prev, element));
       return prev;
     });
+    // Priority: mediator total (most authoritative) > page-level total > fetched count.
+    if (_mediatorTotalItems != null) {
+      _totalItems = _mediatorTotalItems!;
+    } else if (serverTotal != null) {
+      _totalItems = serverTotal!;
+    }
+    return result;
   }
 
   List<T> _transformGroupData(List<T> previousValue, Page<K, T> element) {
