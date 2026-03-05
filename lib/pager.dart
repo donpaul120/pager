@@ -206,6 +206,19 @@ class _PagerState<K, T> extends State<Pager<K, T>>
         pagingConfig: widget.pagingConfig,
       );
       _internalController!.initialize();
+    } else {
+      // External controller: only initialize if it has never been started.
+      // loadStates == null means dispatchUpdates() has never run, i.e. the
+      // controller is brand-new and hasn't begun loading yet.
+      // If the controller already has data (or is mid-load), we leave it
+      // completely untouched so the widget simply shows what's already there.
+      _maybeInitExternalController(widget.controller!);
+    }
+  }
+
+  void _maybeInitExternalController(PagerController<K, T> controller) {
+    if (controller.value.loadStates == null) {
+      controller.initialize();
     }
   }
 
@@ -221,6 +234,13 @@ class _PagerState<K, T> extends State<Pager<K, T>>
         pagingConfig: widget.pagingConfig,
       );
       _internalController!.initialize();
+    }
+
+    // If the external controller instance was swapped, initialize the new one
+    // only if it hasn't been started yet.
+    if (widget.controller != null &&
+        widget.controller != oldWidget.controller) {
+      _maybeInitExternalController(widget.controller!);
     }
 
     if (widget.scrollController != oldWidget.scrollController) {
