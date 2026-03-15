@@ -23,7 +23,7 @@ class PagingSource<Key, Value> {
         localSource: (a) => localSource(a).map((event) {
           final newData = event.data;
           newData.sort(compare);
-          return Page(newData, event.prevKey, event.nextKey);
+          return Page(newData, event.prevKey, event.nextKey, totalItems: event.totalItems);
         }),
         remoteMediator: remoteMediator
     );
@@ -34,7 +34,7 @@ class PagingSource<Key, Value> {
     return PagingSource(
         localSource: (params) => localSource(params).map((event) {
           final newData = event.data.where(predicate).toList();
-          return Page(newData, event.prevKey, event.nextKey);
+          return Page(newData, event.prevKey, event.nextKey, totalItems: event.totalItems);
         }),
         remoteMediator: remoteMediator
     );
@@ -59,7 +59,7 @@ class PagingSource<Key, Value> {
     return PagingSource(
         localSource: (params) => localSource(params).map((event) {
           final newData = event.data.map(predicate).toList();
-          return Page(newData, event.prevKey, event.nextKey);
+          return Page(newData, event.prevKey, event.nextKey, totalItems: event.totalItems);
         }),
         remoteMediator: remoteMediator
     );
@@ -74,7 +74,8 @@ class PagingSource<Key, Value> {
               final newData = <T>[];
               groupedData.forEach((key, value) => newData.add(mapper(key, value)));
               return PageGroup(
-                  newData, event.prevKey, event.nextKey, event.data.length);
+                  newData, event.prevKey, event.nextKey, event.data.length,
+                  totalItems: event.totalItems);
             }),
         remoteMediator: remoteMediator);
   }
@@ -115,8 +116,9 @@ class LoadParams<K> {
 class PageGroup<Key, Value> extends Page<Key, Value> {
   PageGroup(
       List<Value> data,
-      Key? prevKey, Key? nextKey, this.originalDataSize
-      ) : super(data, prevKey, nextKey);
+      Key? prevKey, Key? nextKey, this.originalDataSize,
+      {int? totalItems}
+      ) : super(data, prevKey, nextKey, totalItems: totalItems);
 
   final int originalDataSize;
 }
