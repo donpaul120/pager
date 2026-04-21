@@ -487,7 +487,7 @@ class PagerController<K, T> extends ValueNotifier<PagingData<T>> {
         for (final item in firstItem.items) {
           if (!lastItem.items.contains(item)) lastItem.items.add(item);
         }
-        return List.empty();
+        return element.data.sublist(1);
       }
     }
     return element.data;
