@@ -5,7 +5,7 @@ class PagerRecordData<T> {
     this.records = const [],
   });
 
-  final int? totalPages;
-  final int? totalItems;
+  final int totalPages;
+  final int totalItems;
   final List<T> records;
 }
