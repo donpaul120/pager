@@ -7,5 +7,5 @@ class PagerRecordData<T> {
 
   final int? totalPages;
   final int? totalItems;
-  final List<T>? records;
+  final List<T> records;
 }
