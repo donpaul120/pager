@@ -8,7 +8,7 @@ import 'paging/paging_data.dart';
 import 'paging/paging_source.dart';
 
 export 'paging/combined_load_state.dart';
-export 'paging/helper/paged_record_response.dart';
+export 'paging/helper/pager_record_data.dart';
 export 'paging/helper/record_mediator_helper.dart';
 export 'paging/load_state.dart';
 export 'paging/load_states.dart';

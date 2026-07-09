@@ -1,4 +1,4 @@
-import 'package:pager/paging/helper/paged_record_response.dart';
+import 'package:pager/paging/helper/pager_record_data.dart';
 import 'package:pager/paging/paging_state.dart';
 import 'package:pager/paging/remote_mediator.dart';
 
