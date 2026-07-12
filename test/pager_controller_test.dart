@@ -245,6 +245,109 @@ void main() {
   });
 
   group('append', () {
+    test('append with a mediator: cache miss fetches remotely, next scroll '
+        'picks up the fetched page', () async {
+      final store = <int, Page<int, String>>{0: pageAt(0, 2)};
+      final mediator = FakeMediator((type, cursor) async {
+        if (type == LoadType.APPEND && cursor != null) {
+          // "Fetch" the page from the server into the local store.
+          store[cursor] = pageAt(cursor, 2);
+        }
+        return MediatorResult.success(endOfPaginationReached: false);
+      });
+      final source = PagingSource<int, String>(
+        remoteMediator: mediator,
+        localSource: (params) {
+          final key = params.key ?? 0;
+          return Stream.value(store[key] ?? Page(<String>[], null, null));
+        },
+      );
+      final controller = PagerController<int, String>(source: source);
+      controller.initialize();
+      await pumpEventQueue();
+      expect(controller.items, ['item0', 'item1', 'item2']);
+
+      // Scroll near the bottom: cursor 1 misses the cache → mediator fetches.
+      controller.onScrollPositionChanged(100, 100);
+      await pumpEventQueue();
+      // Appends do not auto-re-trigger after a mediator fetch (unlike
+      // prepends) — the fetched page is picked up by the next scroll event.
+      expect(controller.items, ['item0', 'item1', 'item2']);
+      expect(mediator.calls.where((c) => c == LoadType.APPEND).length, 1);
+
+      controller.onScrollPositionChanged(100, 100);
+      await pumpEventQueue();
+      expect(controller.items, List.generate(6, (i) => 'item$i'));
+
+      controller.dispose();
+    });
+
+    test('append errors surface and retry() recovers with a mediator present',
+        () async {
+      var failAppend = true;
+      final mediator = FakeMediator((type, cursor) async =>
+          MediatorResult.success(endOfPaginationReached: false));
+      final source = PagingSource<int, String>(
+        remoteMediator: mediator,
+        localSource: (params) {
+          if (params.key == null) return Stream.value(pageAt(0, 2));
+          if (failAppend) {
+            return Stream.error(Exception('disk failure'));
+          }
+          return Stream.value(pageAt(params.key!, 2));
+        },
+      );
+      final controller = PagerController<int, String>(source: source);
+      controller.initialize();
+      await pumpEventQueue();
+      expect(controller.items, ['item0', 'item1', 'item2']);
+
+      controller.triggerAppend();
+      await pumpEventQueue();
+      expect(controller.hasError, isTrue);
+      expect(controller.appendError, isNotNull);
+      expect(controller.items, ['item0', 'item1', 'item2']);
+
+      failAppend = false;
+      await controller.retry();
+      await pumpEventQueue();
+      expect(controller.hasError, isFalse);
+      expect(controller.items, List.generate(6, (i) => 'item$i'));
+
+      controller.dispose();
+    });
+
+    test('reactive refresh emissions update the refresh page after appends',
+        () async {
+      final refreshStream = StreamController<Page<int, String>>();
+      final source = PagingSource<int, String>(
+        localSource: (params) {
+          if (params.key == null) return refreshStream.stream;
+          return Stream.value(pageAt(params.key!, 2));
+        },
+      );
+      final controller = PagerController<int, String>(source: source);
+      controller.initialize();
+      await pumpEventQueue();
+      refreshStream.add(pageAt(0, 2));
+      await pumpEventQueue();
+      expect(controller.items, ['item0', 'item1', 'item2']);
+
+      controller.triggerAppend();
+      await pumpEventQueue();
+      expect(controller.items, List.generate(6, (i) => 'item$i'));
+
+      // The refresh query re-emits with changed data; the update must land on
+      // the refresh page without disturbing the appended page.
+      refreshStream.add(Page(['item0', 'CHANGED', 'item2'], null, 1));
+      await pumpEventQueue();
+      expect(controller.items,
+          ['item0', 'CHANGED', 'item2', 'item3', 'item4', 'item5']);
+
+      controller.dispose();
+      await refreshStream.close();
+    });
+
     test('appends pages until the last page is reached', () async {
       final controller = PagerController<int, String>(
           source: pagedSource(startPage: 0, totalPages: 3));
