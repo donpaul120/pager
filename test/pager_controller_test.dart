@@ -37,6 +37,37 @@ class FakeMediator extends RemoteMediator<int, String> {
 }
 
 void main() {
+  group('initial load', () {
+    test(
+        'cached local data is shown before the remote mediator fetch '
+        'completes', () async {
+      final fetchGate = Completer<void>();
+      final mediator = FakeMediator((type, cursor) async {
+        if (type == LoadType.REFRESH) await fetchGate.future;
+        return MediatorResult.success(endOfPaginationReached: false);
+      });
+      final source = PagingSource<int, String>(
+        remoteMediator: mediator,
+        // Cached data, available without any network round-trip.
+        localSource: (params) => Stream.value(pageAt(0, 1)),
+      );
+      final controller = PagerController<int, String>(source: source);
+      controller.initialize();
+      await pumpEventQueue();
+
+      // The mediator's REFRESH fetch is in flight but stuck on fetchGate —
+      // the cached local page must already be visible regardless.
+      expect(mediator.calls, [LoadType.REFRESH]);
+      expect(controller.items, ['item0', 'item1', 'item2']);
+
+      fetchGate.complete();
+      await pumpEventQueue();
+      expect(controller.items, ['item0', 'item1', 'item2']);
+
+      controller.dispose();
+    });
+  });
+
   group('prepend', () {
     test('prepends pages in order until the first page is reached', () async {
       final controller = PagerController<int, String>(

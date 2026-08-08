@@ -199,8 +199,14 @@ class PagerController<K, T> extends ValueNotifier<PagingData<T>> {
 
   void _doInitialLoad() {
     Future.microtask(() async {
-      await _requestRemoteLoad(LoadType.REFRESH);
+      // Surface cached local data immediately, before waiting on the
+      // network — previously the remote load was awaited first, so a
+      // populated local source could never be shown on initial load.
+      // No need to re-trigger _doLoad after the remote sync: _onRefresh
+      // keeps its localSource subscription open, so a write from the
+      // mediator's save() arrives through that same subscription.
       await _doLoad(LoadType.REFRESH);
+      await _requestRemoteLoad(LoadType.REFRESH);
     });
   }
 
