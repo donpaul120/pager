@@ -398,6 +398,116 @@ void main() {
     });
   });
 
+  group('idempotency and concurrency guards', () {
+    test('initialize() called twice performs only one initial load',
+        () async {
+      var buildCalls = 0;
+      final source = PagingSource<int, String>(
+        localSource: (params) {
+          buildCalls++;
+          return Stream.value(pageAt(0, 1));
+        },
+      );
+      final controller = PagerController<int, String>(source: source);
+      controller.initialize();
+      controller.initialize();
+      await pumpEventQueue();
+
+      expect(buildCalls, 1);
+      expect(controller.items, ['item0', 'item1', 'item2']);
+
+      controller.dispose();
+    });
+
+    test('refresh() called twice synchronously only performs one refresh '
+        'cycle', () async {
+      var refreshBuilds = 0;
+      final source = PagingSource<int, String>(
+        localSource: (params) {
+          if (params.key == null) refreshBuilds++;
+          return Stream.value(pageAt(0, 1));
+        },
+      );
+      final controller = PagerController<int, String>(source: source);
+      controller.initialize();
+      await pumpEventQueue();
+      expect(refreshBuilds, 1);
+
+      controller.refresh();
+      controller.refresh();
+      await pumpEventQueue();
+
+      expect(refreshBuilds, 2);
+
+      controller.dispose();
+    });
+
+    test('refresh() while a previous refresh is still closing subscriptions '
+        'is a no-op', () async {
+      final cancelGate = Completer<void>();
+      var refreshSubscribeCount = 0;
+
+      final source = PagingSource<int, String>(
+        localSource: (params) {
+          refreshSubscribeCount++;
+          final controller = StreamController<Page<int, String>>(
+            onCancel: () => cancelGate.future,
+          );
+          controller.add(pageAt(0, 1));
+          return controller.stream;
+        },
+      );
+      final controller = PagerController<int, String>(source: source);
+      controller.initialize();
+      await pumpEventQueue();
+      expect(controller.items, ['item0', 'item1', 'item2']);
+      expect(refreshSubscribeCount, 1);
+
+      // _doLoad's REFRESH branch tries to cancel the existing subscription,
+      // which is gated on cancelGate and won't resolve yet — this is the
+      // "REFRESH leg still in flight" window.
+      controller.refresh();
+      await pumpEventQueue();
+
+      // A second refresh call while the first is still stuck cancelling must
+      // be a no-op: no additional subscribe, no reset of in-flight state.
+      await controller.refresh();
+      await pumpEventQueue();
+      expect(refreshSubscribeCount, 1);
+
+      cancelGate.complete();
+      await pumpEventQueue();
+
+      // Now the first refresh's cancel completes and it re-subscribes.
+      expect(refreshSubscribeCount, 2);
+
+      controller.dispose();
+    });
+
+    test('refresh() after end-of-pagination still re-triggers the mediator '
+        'fetch', () async {
+      final mediator = FakeMediator((type, cursor) async =>
+          MediatorResult.success(endOfPaginationReached: true));
+      final source = PagingSource<int, String>(
+        remoteMediator: mediator,
+        localSource: (params) => Stream.value(pageAt(0, 1)),
+      );
+      final controller = PagerController<int, String>(source: source);
+      controller.initialize();
+      await pumpEventQueue();
+      expect(mediator.calls.where((c) => c == LoadType.REFRESH).length, 1);
+
+      await controller.refresh();
+      await pumpEventQueue();
+
+      // A stale endOfPaginationReached must not silently short-circuit the
+      // mediator fetch on a fresh refresh.
+      expect(mediator.calls.where((c) => c == LoadType.REFRESH).length, 2);
+
+      controller.dispose();
+    });
+  });
+
   group('LoadStates.combineStates', () {
     LoadStates idle() => LoadStates.idle();
 
