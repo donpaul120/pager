@@ -57,6 +57,12 @@ class PagerController<K, T> extends ValueNotifier<PagingData<T>> {
   // scroll events are rejected before they can queue another load on the lock.
   final Set<LoadType> _loadsInFlight = {};
 
+  // Set synchronously the instant `initialize()` is called — before any
+  // microtask is scheduled — so a second call (e.g. Pager.withController's
+  // initState racing an explicit app-level `initialize()` call) is a
+  // guaranteed no-op regardless of call order.
+  bool _initializeRequested = false;
+
   RemoteMediator<K, dynamic>? get _remoteMediator => source.remoteMediator;
 
   // ─── Public API ────────────────────────────────────────────────────────────
@@ -109,19 +115,29 @@ class PagerController<K, T> extends ValueNotifier<PagingData<T>> {
   /// The exception from the most recent failed append, or null.
   Exception? get appendError => value.appendError;
 
-  /// Starts the initial data load. Must be called once after construction.
+  /// Starts the initial data load. Safe to call more than once — only the
+  /// first call has any effect.
   ///
   /// Not required when the controller is passed to a [Pager] widget — the
   /// widget manages initialization automatically.
-  void initialize() => _doInitialLoad();
+  void initialize() {
+    if (_initializeRequested) return;
+    _initializeRequested = true;
+    _doInitialLoad();
+  }
 
   /// Clears all data and restarts from the first page.
+  ///
+  /// Safe to call while a refresh (or the REFRESH leg of an initial load) is
+  /// already in flight — the call is a no-op in that case rather than racing
+  /// a second invalidate/re-subscribe against it.
   Future<void> refresh() async {
+    if (_loadsInFlight.contains(LoadType.REFRESH)) return;
+
     _states = LoadStates.idle();
     _sourceStates = LoadStates.idle();
     _mediatorStates = LoadStates.idle();
     _loadsInFlight.clear();
-    await _invalidate(dispatch: false);
     _doInitialLoad();
   }
 
@@ -211,8 +227,9 @@ class PagerController<K, T> extends ValueNotifier<PagingData<T>> {
   }
 
   Future<void> _doLoad(LoadType loadType, {bool bypassEndOfPag = false}) async {
-    // Synchronously gate concurrent append/prepend calls before touching the lock.
-    if (loadType != LoadType.REFRESH && !_loadsInFlight.add(loadType)) return;
+    // Synchronously gate concurrent calls of the same load type — including
+    // duplicate/overlapping refreshes — before touching the lock.
+    if (!_loadsInFlight.add(loadType)) return;
 
     try {
       await _lock.synchronized(() async {
