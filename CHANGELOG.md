@@ -6,7 +6,7 @@
 
 * Fixed concurrent modification issue when closing page subscriptions.
 
-## 0.1.0
+## 0.1.7
 
 * First release on pub.dev, published as `pagerx` (the `pager` name is taken). Import with `package:pagerx/pagerx.dart`.
 * Added prepend support to `PagerController`.
