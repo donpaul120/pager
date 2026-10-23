@@ -57,15 +57,13 @@ A Flutter pagination library for loading data incrementally from local or remote
 
 ```yaml
 dependencies:
-  pager:
-    git:
-      url: https://github.com/donpaul120/pager.git
+  pagerx: ^0.1.0
 ```
 
 Then import the library:
 
 ```dart
-import 'package:pager/pager.dart';
+import 'package:pagerx/pagerx.dart';
 ```
 
 ---
@@ -529,7 +527,7 @@ builder: (context, data) {
 For more control, inspect `data.loadStates` directly:
 
 ```dart
-import 'package:pager/pager.dart';
+import 'package:pagerx/pagerx.dart';
 
 final states = data.loadStates;
 

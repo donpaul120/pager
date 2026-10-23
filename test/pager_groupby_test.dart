@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart' hide Page;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pager/pager.dart';
+import 'package:pagerx/pagerx.dart';
 
-import 'package:pager/paging/paging_data.dart';
-import 'package:pager/paging/paging_source.dart';
+import 'package:pagerx/paging/paging_data.dart';
+import 'package:pagerx/paging/paging_source.dart';
 
 class _Transaction {
   final String date;

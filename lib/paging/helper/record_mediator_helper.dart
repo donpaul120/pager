@@ -1,6 +1,6 @@
-import 'package:pager/paging/helper/pager_record_data.dart';
-import 'package:pager/paging/paging_state.dart';
-import 'package:pager/paging/remote_mediator.dart';
+import 'package:pagerx/paging/helper/pager_record_data.dart';
+import 'package:pagerx/paging/paging_state.dart';
+import 'package:pagerx/paging/remote_mediator.dart';
 
 PagerRecordMediator<K, V> pagerRecordMediator<K, V>({
   required Future<void> Function(List<V> value) save,
@@ -35,10 +35,10 @@ abstract class PagerRecordMediator<K, V> extends RemoteMediator<K, V> {
       }
       final response = await fetch(_page);
       var endOfPagination = false;
-      final contentLength = response.records?.length ?? 0;
+      final contentLength = response.records.length;
       if (loadType == LoadType.REFRESH) {
-        await clear(response.records ?? []);
-        await save(response.records ?? []);
+        await clear(response.records);
+        await save(response.records);
         if (pagingState.pagingConfig.initialPageSize > contentLength) {
           endOfPagination = true;
         }
@@ -48,7 +48,7 @@ abstract class PagerRecordMediator<K, V> extends RemoteMediator<K, V> {
       }
 
       if (contentLength != 0 && loadType != LoadType.REFRESH) {
-        await save(response.records ?? []);
+        await save(response.records);
       }
 
       return MediatorResult.success(endOfPaginationReached: endOfPagination);
