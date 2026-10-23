@@ -1,6 +1,6 @@
 name: pagerx
 description: A Flutter paging library that loads data from local and remote sources, with remote mediators, prepend/append, and grouping support.
-version: 0.1.8
+version: 0.1.9
 homepage: https://github.com/donpaul120/pager
 repository: https://github.com/donpaul120/pager
 

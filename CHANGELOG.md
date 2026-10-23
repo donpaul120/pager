@@ -1,10 +1,6 @@
-## 0.0.1
+## 0.1.9
 
-* initial release.
-
-## 0.0.2
-
-* Fixed concurrent modification issue when closing page subscriptions.
+* Reordered the CHANGELOG so the newest release is listed first.
 
 ## 0.1.8
 
@@ -17,3 +13,11 @@
 * Added `collection` as an explicit dependency.
 * Licensed under the MIT License.
 * `pagerRecordMediator` now forwards `PagerRecordData.totalItems` (when greater than 0) to the controller's `totalItems`.
+
+## 0.0.2
+
+* Fixed concurrent modification issue when closing page subscriptions.
+
+## 0.0.1
+
+* initial release.

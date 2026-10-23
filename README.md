@@ -65,7 +65,7 @@ A Flutter pagination library for loading data incrementally from local or remote
 
 ```yaml
 dependencies:
-  pagerx: ^0.1.8
+  pagerx: ^0.1.9
 ```
 
 Then import the library:
