@@ -1,5 +1,5 @@
-// import 'package:pager/paging/paging_state.dart';
-// import 'package:pager/paging/remote_mediator.dart';
+// import 'package:pagerx/paging/paging_state.dart';
+// import 'package:pagerx/paging/remote_mediator.dart';
 //
 // abstract class AbstractServiceResultMediator<K, V> extends RemoteMediator<K, V> {
 //

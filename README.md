@@ -1,6 +1,10 @@
-# Pager
+# pagerx
+
+[![pub package](https://img.shields.io/pub/v/pagerx.svg)](https://pub.dev/packages/pagerx)
 
 A Flutter pagination library for loading data incrementally from local or remote sources. It handles scroll detection, load state management, error recovery, and optional offline-first caching through a remote mediator pattern.
+
+> Published on pub.dev as **`pagerx`** (the `pager` name was already taken). The source lives at [github.com/donpaul120/pager](https://github.com/donpaul120/pager).
 
 ---
 
@@ -22,6 +26,7 @@ A Flutter pagination library for loading data incrementally from local or remote
   - [Headless pagination](#headless-pagination)
   - [Available getters](#available-getters)
   - [Actions](#actions)
+- [Prepend (loading in both directions)](#prepend-loading-in-both-directions)
 - [PagingData](#pagingdata)
 - [Load States](#load-states)
   - [Handling all states in the builder](#handling-all-states-in-the-builder)
@@ -31,17 +36,20 @@ A Flutter pagination library for loading data incrementally from local or remote
   - [How it works](#how-it-works)
   - [Implementing a RemoteMediator](#implementing-a-remotemediator)
   - [Reporting the server total](#reporting-the-server-total)
+  - [pagerRecordMediator helper](#pagerrecordmediator-helper)
 - [Reporting totalItems](#reporting-totalitems)
   - [Via the remote mediator (recommended)](#via-the-remote-mediator-recommended)
   - [Via the Page directly](#via-the-page-directly)
 - [Page and PageGroup](#page-and-pagegroup)
 - [API Reference](#api-reference)
+- [Example app](#example-app)
 
 ---
 
 ## Features
 
 - Automatic scroll-to-bottom detection — no manual scroll controller wiring required
+- Loads in both directions — append when scrolling down, prepend when scrolling up
 - Works inside `CustomScrollView` with a simple `scrollController` parameter
 - `PagerController` exposes all pagination state as a `ValueNotifier` for reactive UI
 - Headless mode — consume paginated data without rendering a widget
@@ -57,15 +65,13 @@ A Flutter pagination library for loading data incrementally from local or remote
 
 ```yaml
 dependencies:
-  pager:
-    git:
-      url: https://github.com/donpaul120/pager.git
+  pagerx: ^0.1.7
 ```
 
 Then import the library:
 
 ```dart
-import 'package:pager/pager.dart';
+import 'package:pagerx/pagerx.dart';
 ```
 
 ---
@@ -432,6 +438,56 @@ controller.dispose();
 | `initialize()` | Starts the initial load. Called automatically by `Pager`. |
 | `refresh()` | Clears all data and reloads from the first page. |
 | `retry()` | Retries after an error — calls `refresh()` for refresh errors, retries the last append for append errors. |
+| `triggerAppend()` | Loads the next page now, without waiting for a scroll event. See [Manual triggers](#manual-triggers). |
+| `triggerPrepend()` | Loads the previous page now, without waiting for a scroll event. See [Manual triggers](#manual-triggers). |
+| `onScrollPositionChanged(position, maxExtent)` | Feeds a scroll position in manually. `Pager` calls this for you. |
+| `dispose()` | Closes all page subscriptions. Call it when you own the controller. |
+
+### Manual triggers
+
+`Pager` loads more data when the user scrolls near either end of the list. When that doesn't fit your layout — a "Load more" button, a horizontal list, a pull-to-load-older gesture — call the triggers yourself:
+
+```dart
+controller.triggerAppend();  // load the page after the last loaded page
+controller.triggerPrepend(); // load the page before the first loaded page
+```
+
+Both are safe to call repeatedly. A call made while a load in the same direction is already running does nothing. They also ignore an earlier "end of pagination" result from the remote mediator and ask it again, which helps when you know the server has new data. They still stop at a page whose `nextKey` (or `prevKey`) is `null`, because there is no key to load next.
+
+---
+
+## Prepend (loading in both directions)
+
+By default a list starts at the first page and grows downward. If you open a list in the middle — a chat jumping to the last unread message, a feed restored to where the user left off — `pagerx` can also load the pages *before* it as the user scrolls up.
+
+Prepend is driven entirely by `prevKey`:
+
+1. The initial load is called with `params.key == null`. Return the page you want to start on, with a non-null `prevKey` if there are pages before it.
+2. When the user scrolls within `preFetchDistance` items of the top (or you call `triggerPrepend()`), `localSource` is called with `params.loadType == LoadType.PREPEND` and `params.key` set to the first loaded page's `prevKey`.
+3. The returned page is inserted at the start of the list. A page whose `prevKey` is `null` ends prepending.
+
+```dart
+const startPage = 5; // e.g. the page holding the last read message
+
+final source = PagingSource<int, Message>(
+  localSource: (params) async* {
+    final page = params.key ?? startPage;
+    final rows = await db.messages(page: page, limit: 20);
+    yield Page(
+      rows,
+      page > 0 ? page - 1 : null,           // prevKey — null at the very first page
+      rows.length == 20 ? page + 1 : null,  // nextKey — null at the very last page
+    );
+  },
+);
+```
+
+Things to know:
+
+- **Watch the prepend state** with `data.loadStates?.prepend` — `Loading`, `NotLoading(endOfPaginationReached)` or `Error`. `isAppending` only reflects the append direction.
+- **`retry()` does not retry prepends.** After a prepend `Error`, call `triggerPrepend()` instead.
+- **Scroll position:** inserting items above the viewport pushes the content down, because a normal `ListView` keeps its scroll offset, not the item at the top. If the visible items must stay put, use a `CustomScrollView` with a `center` key, or adjust the offset after the prepend lands.
+- **With a `RemoteMediator`:** on a `LoadType.PREPEND` call, `pagingState.nextKey` holds the first page's `prevKey` — the key of the page to fetch before the current data. When your mediator saves that page, the controller re-runs the prepend automatically so the new rows appear without another scroll event.
 
 ---
 
@@ -462,7 +518,7 @@ builder: (context, PagingData<T> data) {
 
 ### Handling all states in the builder
 
-A complete builder that covers every state:
+A complete builder that covers every state. `retry()` lives on the controller, so this example assumes you created `_controller` yourself and passed it to `Pager` (see [Accessing state outside the builder](#accessing-state-outside-the-builder)):
 
 ```dart
 builder: (context, data) {
@@ -479,7 +535,7 @@ builder: (context, data) {
         children: [
           Text('Failed to load: ${data.refreshError}'),
           ElevatedButton(
-            onPressed: controller.retry,
+            onPressed: _controller.retry,
             child: const Text('Retry'),
           ),
         ],
@@ -506,7 +562,7 @@ builder: (context, data) {
         }
         if (data.appendError != null) {
           return TextButton(
-            onPressed: controller.retry,
+            onPressed: _controller.retry,
             child: const Text('Load more failed — tap to retry'),
           );
         }
@@ -529,7 +585,7 @@ builder: (context, data) {
 For more control, inspect `data.loadStates` directly:
 
 ```dart
-import 'package:pager/pager.dart';
+import 'package:pagerx/pagerx.dart';
 
 final states = data.loadStates;
 
@@ -541,6 +597,9 @@ if (states?.refresh is Error) {
 
 if (states?.append is Loading) { /* next page loading */ }
 if (states?.append.endOfPaginationReached == true) { /* last page */ }
+
+if (states?.prepend is Loading) { /* previous page loading */ }
+if (states?.prepend.endOfPaginationReached == true) { /* first page reached */ }
 
 // Separate source vs mediator states (when using RemoteMediator):
 states?.source?.refresh   // local DB state
@@ -555,6 +614,8 @@ states?.mediator?.refresh // network state
 | `NotLoading` | Idle. `endOfPaginationReached` is `true` on the last page |
 | `Error` | Load failed. Holds the `exception` |
 
+> **Name clash:** this `Error` hides Dart's built-in `Error` class in any file that imports `pagerx`. If you also need the core one, import with a prefix: `import 'package:pagerx/pagerx.dart' as pager;` and write `pager.Error`.
+
 ---
 
 ## PagingConfig
@@ -567,17 +628,19 @@ Pager<int, Transaction>(
   pagingConfig: PagingConfig(
     pageSize: 20,          // number of items per append page
     initialPageSize: 40,   // number of items for the first load (can be larger)
-    preFetchDistance: 5,   // start loading next page when ≤5 items remain visible
+    preFetchDistance: 5,   // start loading the next page when ≤5 items remain
   ),
   builder: (context, data) => ...,
 )
 ```
 
-| Parameter | Default | Description |
-|---|---|---|
-| `pageSize` | `20` | Items per page for subsequent loads |
-| `initialPageSize` | `20` | Items for the very first load |
-| `preFetchDistance` | `5` | Trigger next-page load when this many items remain |
+| Parameter | `PagingConfig()` default | `PagingConfig.fromDefault()` default | Description |
+|---|---|---|---|
+| `pageSize` | `15` | `20` | Items per page for append and prepend loads |
+| `initialPageSize` | `15` | `20` | Items for the very first load |
+| `preFetchDistance` | `5` | `5` | Start loading when this many items remain before the end (or the start, for prepends) |
+
+`Pager` and `PagerController` use `PagingConfig.fromDefault()` when you don't pass a config. Note that `PagingConfig()` with no arguments gives you 15, not 20. `PagingConfig.fromDefault()` is also the only `const` constructor.
 
 ---
 
@@ -622,9 +685,12 @@ class TransactionMediator extends RemoteMediator<int, Transaction> {
       switch (loadType) {
         case LoadType.REFRESH:
           _page = null; // reset to first page
+          break;
         case LoadType.APPEND:
           _page = pagingState.nextKey as int?;
+          break;
         case LoadType.PREPEND:
+          // This mediator only pages forward.
           return MediatorResult.success(endOfPaginationReached: true);
       }
 
@@ -652,6 +718,8 @@ class TransactionMediator extends RemoteMediator<int, Transaction> {
 }
 ```
 
+> **Always pass `endOfPaginationReached` explicitly.** `MediatorResult.success()` defaults it to `true`. If you leave it out, the controller treats the network as exhausted after the first fetch and never calls `load()` for `APPEND` again.
+
 Wire it into your `PagingSource`:
 
 ```dart
@@ -674,6 +742,51 @@ return MediatorResult.success(
   totalItems: response.totalCount, // e.g. 500
 );
 ```
+
+### pagerRecordMediator helper
+
+Most mediators do the same thing: on refresh clear the table and save page one, on append save the next page, and stop when a page comes back short. `pagerRecordMediator` builds that mediator for you from three callbacks:
+
+```dart
+final mediator = pagerRecordMediator<int, Transaction>(
+  // Fetch one page from the network. `page` is null for the first page,
+  // then the nextKey of the last page your localSource returned.
+  fetch: (page) async {
+    final res = await api.getTransactions(page: page ?? 0);
+    return PagerRecordData(
+      records: res.items,
+      totalItems: res.totalCount, // becomes controller.totalItems
+      totalPages: res.totalPages,
+    );
+  },
+  // Write fetched records to the local database.
+  save: (records) => dao.insertAll(records),
+  // Called on refresh, before the first page is saved.
+  // Receives the freshly fetched records; usually you just wipe the table.
+  clear: (records) => dao.deleteAll(),
+);
+
+final source = PagingSource<int, Transaction>(
+  localSource: (params) => dao.watchPage(params.key ?? 0, params.loadSize).map(
+    (rows) => Page(rows, null, rows.isEmpty ? null : (params.key ?? 0) + 1),
+  ),
+  remoteMediator: mediator,
+);
+```
+
+How it decides that pagination has ended:
+
+- **Refresh:** ended when fewer than `pagingConfig.initialPageSize` records come back.
+- **Append:** ended when fewer than `pagingConfig.pageSize` records come back, or none at all.
+
+Limits to be aware of:
+
+- **Append only.** A `PREPEND` request returns success immediately without fetching. Write your own `RemoteMediator` if you need to fetch older pages from the network.
+- **`totalItems` is passed to the controller only when it's greater than `0`.** `PagerRecordData` defaults it to `0`, which is treated as "not reported", so the controller falls back to the `Page` total or the local item count. `totalPages` is not used.
+- **Page keys must match.** The key passed to `fetch` is the `nextKey` your `localSource` returned for the last page, so both sides must use the same page numbering.
+- Exceptions thrown by any callback are caught and reported as a `MediatorResult.error`, which shows up in `loadStates.mediator`.
+
+You can also subclass `PagerRecordMediator<K, V>` and override `fetch`, `save` and `clear` if you prefer a class.
 
 ---
 
@@ -793,6 +906,8 @@ PagerController<K, T>({
 void initialize()
 Future<void> refresh()
 Future<void> retry()
+void triggerAppend()
+void triggerPrepend()
 void onScrollPositionChanged(double currentPosition, double maxScrollExtent)
 void dispose()
 ```
@@ -808,7 +923,7 @@ PagingSource<Key, Value>({
 PagingSource<Key, Value> sort([int Function(Value, Value)? compare])
 PagingSource<Key, Value> filter(bool Function(Value) predicate)
 PagingSource<Key, T>     map<T>(T Function(Value) predicate)
-PagingSource<Key, Value> groupBy<K, T>(K Function(Value) key, T Function(K, List<Value>) mapper)
+PagingSource<Key, T>     groupBy<K, T>(K Function(Value) key, T Function(K, List<Value>) mapper)
 PagingSource<Key, Value> take(int limit)
 PagingSource<Key, Value> forEach(Function(List<Value>) callback)
 ```
@@ -817,7 +932,7 @@ PagingSource<Key, Value> forEach(Function(List<Value>) callback)
 
 ```dart
 MediatorResult.success({
-  bool endOfPaginationReached,
+  bool endOfPaginationReached = true, // pass this explicitly
   int? totalItems,
 })
 
@@ -830,9 +945,15 @@ MediatorResult.error({
 
 ```dart
 PagingConfig({
-  int pageSize,
-  int initialPageSize,
-  int preFetchDistance,
+  int pageSize = 15,
+  int initialPageSize = 15,
+  int preFetchDistance = 5,
+})
+
+const PagingConfig.fromDefault({
+  int pageSize = 20,
+  int initialPageSize = 20,
+  int preFetchDistance = 5,
 })
 ```
 
@@ -844,4 +965,34 @@ class LoadParams<K> {
   final K? key;            // page key (null for first page)
   final int loadSize;      // number of items to load
 }
+```
+
+### pagerRecordMediator
+
+```dart
+PagerRecordMediator<K, V> pagerRecordMediator<K, V>({
+  required Future<PagerRecordData<V>> Function(K? page) fetch,
+  required Future<void> Function(List<V> records) save,
+  required Future<void> Function(List<V> records) clear,
+})
+
+const PagerRecordData<T>({
+  List<T> records = const [],
+  int totalItems = 0,
+  int totalPages = 0,
+})
+```
+
+---
+
+## Example app
+
+[`example/lib/main.dart`](example/lib/main.dart) is a runnable app with two screens:
+
+- **Feed** — appends pages from a fake API as you scroll, with loading, error/retry and end-of-list footers, plus a total-count badge in the app bar read from an external `PagerController`.
+- **Chat** — opens in the middle of a conversation and prepends older messages as you scroll up.
+
+```bash
+cd example
+flutter run
 ```

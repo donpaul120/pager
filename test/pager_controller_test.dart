@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pager/pager.dart';
+import 'package:pagerx/pagerx.dart';
 
 /// Builds page [p] of [totalPages]: 3 items per page, page-number keys.
 /// prevKey/nextKey are null at the respective boundaries.
