@@ -51,7 +51,12 @@ abstract class PagerRecordMediator<K, V> extends RemoteMediator<K, V> {
         await save(response.records);
       }
 
-      return MediatorResult.success(endOfPaginationReached: endOfPagination);
+      // PagerRecordData defaults totalItems to 0, which means "not reported";
+      // forwarding it would override the local count with 0.
+      return MediatorResult.success(
+        endOfPaginationReached: endOfPagination,
+        totalItems: response.totalItems > 0 ? response.totalItems : null,
+      );
     } catch (e, _) {
       if (e is Exception) {
         return MediatorResult.error(exception: e);

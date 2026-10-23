@@ -15,3 +15,4 @@
 * Fixed race conditions in `PagerController.initialize()` and `refresh()`.
 * Fixed items being dropped when merging groups with the same key across pages.
 * Added `collection` as an explicit dependency.
+* `pagerRecordMediator` now forwards `PagerRecordData.totalItems` (when greater than 0) to the controller's `totalItems`.

@@ -755,7 +755,7 @@ final mediator = pagerRecordMediator<int, Transaction>(
     final res = await api.getTransactions(page: page ?? 0);
     return PagerRecordData(
       records: res.items,
-      totalItems: res.totalCount,
+      totalItems: res.totalCount, // becomes controller.totalItems
       totalPages: res.totalPages,
     );
   },
@@ -782,7 +782,7 @@ How it decides that pagination has ended:
 Limits to be aware of:
 
 - **Append only.** A `PREPEND` request returns success immediately without fetching. Write your own `RemoteMediator` if you need to fetch older pages from the network.
-- **`totalItems` and `totalPages` are not passed to the controller yet.** To show a server total, report it from your `localSource` with `Page(..., totalItems: ...)`, or write a custom mediator.
+- **`totalItems` is passed to the controller only when it's greater than `0`.** `PagerRecordData` defaults it to `0`, which is treated as "not reported", so the controller falls back to the `Page` total or the local item count. `totalPages` is not used.
 - **Page keys must match.** The key passed to `fetch` is the `nextKey` your `localSource` returned for the last page, so both sides must use the same page numbering.
 - Exceptions thrown by any callback are caught and reported as a `MediatorResult.error`, which shows up in `loadStates.mediator`.
 
