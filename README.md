@@ -65,7 +65,7 @@ A Flutter pagination library for loading data incrementally from local or remote
 
 ```yaml
 dependencies:
-  pagerx: ^0.1.7
+  pagerx: ^0.1.8
 ```
 
 Then import the library:
@@ -996,3 +996,9 @@ const PagerRecordData<T>({
 cd example
 flutter run
 ```
+
+---
+
+## License
+
+MIT. See [LICENSE](LICENSE).

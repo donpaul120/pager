@@ -6,7 +6,7 @@
 
 * Fixed concurrent modification issue when closing page subscriptions.
 
-## 0.1.7
+## 0.1.8
 
 * First release on pub.dev, published as `pagerx` (the `pager` name is taken). Import with `package:pagerx/pagerx.dart`.
 * Added prepend support to `PagerController`.
@@ -15,4 +15,5 @@
 * Fixed race conditions in `PagerController.initialize()` and `refresh()`.
 * Fixed items being dropped when merging groups with the same key across pages.
 * Added `collection` as an explicit dependency.
+* Licensed under the MIT License.
 * `pagerRecordMediator` now forwards `PagerRecordData.totalItems` (when greater than 0) to the controller's `totalItems`.
